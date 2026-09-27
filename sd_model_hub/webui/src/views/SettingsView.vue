@@ -45,6 +45,13 @@ const librarySwitches = [
   { key: 'show_all_files', label: 'settings.showAllFiles', help: 'settings.showAllFilesHelp' },
   { key: 'combined_view', label: 'settings.combinedView', help: 'settings.combinedViewHelp' },
 ] as const;
+/** Deleted files pile up where nobody empties them on a server, so the trash switch names the place. */
+const trashHelp = computed(() => {
+  const trash = meta.data.value?.trash;
+  if (!trash) return t('settings.deleteToTrashHelp');
+  return t('settings.deleteToTrashWhere', { system: trash.system ?? t('settings.recycleBin'), fallback: trash.fallback });
+});
+const switchHelp = (sw: (typeof librarySwitches)[number]) => (sw.key === 'delete_to_trash' ? trashHelp.value : t(sw.help));
 </script>
 
 <template>
@@ -156,7 +163,7 @@ const librarySwitches = [
           :key="sw.key"
           :model-value="s.library[sw.key]"
           :label="t(sw.label)"
-          :supporting-text="isPinned(`library.${sw.key}`) ? t('settings.pinned') : t(sw.help)"
+          :supporting-text="isPinned(`library.${sw.key}`) ? t('settings.pinned') : switchHelp(sw)"
           :disabled="isPinned(`library.${sw.key}`)"
           @update:model-value="save({ library: { [sw.key]: $event } })"
         />

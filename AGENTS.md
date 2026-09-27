@@ -259,7 +259,9 @@ falls back to its own implementation of the FreeDesktop specification, moving th
 `~/.local/share/Trash/files/` or to a `.Trash-<uid>` folder at the top of another filesystem.
 Where it cannot (no permission to create that folder), a trash folder in the data directory is
 used instead. On a server nobody empties the trash, so the settings page names the location and
-offers permanent deletion.
+offers permanent deletion: `LibraryService.trash_location()` reaches it as `trash` in `GET /app/meta`
+(the system trash — `$XDG_DATA_HOME/Trash`, `~/.Trash`, or `None` for the Recycle Bin — and the
+data-directory fallback).
 
 **Path safety** is one function every operation calls (`library/safety.py`): components are
 validated (no `..`, no absolute paths, no separators, no control characters, no Windows-reserved

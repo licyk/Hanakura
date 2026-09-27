@@ -153,6 +153,15 @@ class FolderCreate(Record):
     name: str
 
 
+class TrashLocation(Record):
+    """Where a delete to the trash puts files, so a server's owner knows what to empty."""
+
+    system: str | None
+    """The user's system trash on this filesystem; None on Windows, where it is the Recycle Bin."""
+    fallback: str
+    """The folder in the data directory used when the system trash cannot take a file."""
+
+
 class OperationResult(Record):
     """Paths affected by an operation, relative to their roots."""
 

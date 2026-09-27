@@ -307,6 +307,19 @@ def test_delete_permanent_and_to_trash_fallback(services, root_dir, root, monkey
     trash_dir = Path(result.trashed_to[0])
     assert (trash_dir / "t.safetensors").exists()
     assert trash_dir.is_relative_to(services.settings.data_dir)
+    assert trash_dir.parent == Path(services.library.trash_location().fallback)
+
+
+def test_trash_location_follows_xdg_data_home(services, tmp_path, monkeypatch):
+    import sys
+
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
+    where = services.library.trash_location()
+    assert where.system == str(tmp_path / "xdg" / "Trash")
+    assert where.fallback == str(services.settings.data_dir / "trash")
+    monkeypatch.setattr(sys, "platform", "win32")
+    assert services.library.trash_location().system is None
 
 
 def test_cannot_delete_root(services, root):

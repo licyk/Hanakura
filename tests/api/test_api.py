@@ -39,7 +39,9 @@ def root(client, tmp_path):
 
 def test_health_and_version(client):
     assert client.get("/api/v1/app/health").json() == {"status": "ok", "auth_required": False}
-    assert client.get("/api/v1/app/meta").json()["layouts"]["comfyui"]["loras"] == "lora"
+    meta = client.get("/api/v1/app/meta").json()
+    assert meta["layouts"]["comfyui"]["loras"] == "lora"
+    assert meta["trash"]["fallback"].endswith("trash")
 
 
 def test_error_shape(client):

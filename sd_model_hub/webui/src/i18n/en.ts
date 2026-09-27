@@ -258,6 +258,9 @@ export default {
     nsfw: { hide: 'Hide', blur: 'Blur', show: 'Show' },
     deleteToTrash: 'Delete to the trash',
     deleteToTrashHelp: 'On a server nobody empties the trash. Turn off to delete permanently.',
+    deleteToTrashWhere:
+      'Deleted files go to {system}, or to {fallback} when the system trash cannot take them; files on another disk go to the trash of that disk. On a server nobody empties the trash. Turn off to delete permanently.',
+    recycleBin: 'the Recycle Bin',
     followSymlinks: 'Follow symbolic links inside model folders',
     showAllFiles: 'Show every file, not only models',
     showAllFilesHelp: 'Off by default. On, the library lists text files, archives and files with no extension too, like a file manager. Previews and sidecars stay with the model they belong to.',

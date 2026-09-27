@@ -260,6 +260,8 @@ const zhCN: typeof en = {
     nsfw: { hide: '隐藏', blur: '模糊', show: '显示' },
     deleteToTrash: '删除到回收站',
     deleteToTrashHelp: '服务器上的回收站通常没人清空。关闭后将永久删除。',
+    deleteToTrashWhere: '删除的文件会移到 {system}；系统回收站无法接收时移到 {fallback}；其他磁盘上的文件会移到该磁盘自己的回收站。服务器上的回收站通常没人清空。关闭后将永久删除。',
+    recycleBin: '回收站',
     showAllFiles: '显示所有文件，而不只是模型',
     showAllFilesHelp: '默认关闭。开启后，模型库会像文件管理器一样列出文本文件、压缩包以及没有后缀的文件。预览图和附属文件仍归属于对应的模型。',
     combinedView: '在模型库中提供“全部文件夹”',

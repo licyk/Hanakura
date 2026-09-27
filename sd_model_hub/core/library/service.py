@@ -2,6 +2,7 @@
 
 import logging
 import os
+import sys
 import threading
 import time
 import uuid
@@ -37,6 +38,7 @@ from sd_model_hub.core.library.models import (
     RootCreate,
     RootInfo,
     RootUpdate,
+    TrashLocation,
     TreeNode,
 )
 from sd_model_hub.core.library.previews import ScannedModel, companions_of, find_preview, is_ignored, model_stem, scan_dir
@@ -722,6 +724,17 @@ class LibraryService:
             result.paths.append(PathRef(root_id=root_id, path=to_rel(root_path, src)))
             self.notify_changed(root_id, to_rel(root_path, src.parent))
         return result
+
+    def trash_location(self) -> TrashLocation:
+        """Where `delete` sends files when it goes to the trash, as `_trash` and send2trash decide it."""
+        fallback = str(self.settings.data_dir / "trash")
+        if sys.platform == "win32":
+            return TrashLocation(system=None, fallback=fallback)
+        if sys.platform == "darwin":
+            return TrashLocation(system=str(Path.home() / ".Trash"), fallback=fallback)
+        # send2trash's FreeDesktop trash for the home filesystem; other disks use a folder at their top.
+        xdg = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
+        return TrashLocation(system=str(Path(xdg) / "Trash"), fallback=fallback)
 
     def _trash(self, path: Path) -> str:
         try:

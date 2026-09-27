@@ -763,6 +763,7 @@ export interface components {
             };
             /** Roots Locked */
             roots_locked: boolean;
+            trash: components["schemas"]["TrashLocation"];
             /** Api Prefix */
             api_prefix: string;
         };
@@ -2038,6 +2039,16 @@ export interface components {
              * @description Path inside the app to return to; must be relative
              */
             return_to?: string | null;
+        };
+        /**
+         * TrashLocation
+         * @description Where a delete to the trash puts files, so a server's owner knows what to empty.
+         */
+        TrashLocation: {
+            /** System */
+            system: string | null;
+            /** Fallback */
+            fallback: string;
         };
         /** TreeNode */
         TreeNode: {

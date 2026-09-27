@@ -5,6 +5,7 @@ from fastapi import APIRouter, Request
 from sd_model_hub.api.deps import ServicesDep
 from sd_model_hub.core.detection.models import BASE_MODELS, MODEL_KINDS
 from sd_model_hub.core.library import LibraryService
+from sd_model_hub.core.library.models import TrashLocation
 from sd_model_hub.core.record import Record
 from sd_model_hub.version import VERSION
 
@@ -32,6 +33,7 @@ class AppMeta(Record):
     roots_locked: bool
     """True when a host application supplies the model folders; the interface then hides adding,
     editing and removing them."""
+    trash: TrashLocation
     api_prefix: str
 
 
@@ -52,5 +54,6 @@ def get_meta(request: Request, services: ServicesDep) -> AppMeta:
         base_models=[LabeledValue(value=k, label=v) for k, v in BASE_MODELS.items()],
         layouts=LibraryService.layouts(),
         roots_locked=services.library.roots_locked,
+        trash=services.library.trash_location(),
         api_prefix=getattr(request.app.state, "api_prefix", "") or "",
     )
