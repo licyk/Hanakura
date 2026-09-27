@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 import { nextTick } from 'vue';
@@ -8,6 +10,7 @@ import { generateScheme } from '@/theme/scheme';
 import Breadcrumbs from '@/ui/Breadcrumbs.vue';
 import EmptyState from '@/ui/EmptyState.vue';
 import ExpansionPanel from '@/ui/ExpansionPanel.vue';
+import PathText from '@/ui/PathText.vue';
 import SegmentedButton from '@/ui/SegmentedButton.vue';
 import { Box } from '@/ui/icons';
 import { containerFrom, staggerStyle } from '@/ui/motion/transitions';
@@ -49,6 +52,24 @@ describe('ui components', () => {
     expect(wrapper.emitted('update:open')?.[0]).toEqual([true]);
     // The header labels the region it opens, so a screen reader announces the pair.
     expect(wrapper.find('[role="region"]').attributes('aria-labelledby')).toBe(header.attributes('id'));
+  });
+
+  it('PathText keeps a path in its own order inside the right-to-left line that moves the ellipsis', () => {
+    const wrapper = mount(PathText, { props: { path: '/root/model' } });
+    expect(wrapper.attributes('title')).toBe('/root/model');
+    // Without the isolate, a right-to-left line draws the leading "/" at the far end.
+    const inner = wrapper.find('bdi');
+    expect(inner.attributes('dir')).toBe('ltr');
+    expect(inner.text()).toBe('/root/model');
+    const css = readFileSync(join(process.cwd(), 'src/ui/PathText.vue'), 'utf8');
+    expect(css).toMatch(/\.path-text \{[^}]*direction: rtl/);
+  });
+
+  it('no path is set right-to-left outside PathText', () => {
+    const offenders = readdirSync(join(process.cwd(), 'src'), { recursive: true, encoding: 'utf8' })
+      .filter((f) => f.endsWith('.vue') && !f.endsWith('PathText.vue'))
+      .filter((f) => readFileSync(join(process.cwd(), 'src', f), 'utf8').includes('direction: rtl'));
+    expect(offenders).toEqual([]);
   });
 
   it('snackbar queue shows one message at a time', () => {

@@ -515,6 +515,26 @@ export interface paths {
         patch: operations["update_root"];
         trace?: never;
     };
+    "/api/v1/library/combined/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Combined Entries
+         * @description The top level of every root side by side, as folders; library.combined_view only decides whether the interface offers it.
+         */
+        get: operations["list_combined_entries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/library/roots/{root_id}/entries": {
         parameters: {
             query?: never;
@@ -575,6 +595,26 @@ export interface paths {
         };
         /** Get Preview */
         get: operations["get_preview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/roots/{root_id}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download File
+         * @description Send one file as an attachment, so a browser saves it with its own download manager.
+         */
+        get: operations["download_file"];
         put?: never;
         post?: never;
         delete?: never;
@@ -814,6 +854,36 @@ export interface components {
             expires_at: string | null;
             /** Error */
             error: string | null;
+        };
+        /**
+         * CombinedFolder
+         * @description One entry of the combined view: a first-level folder of a root, or a whole root.
+         */
+        CombinedFolder: {
+            /** Name */
+            name: string;
+            /** Path */
+            path: string;
+            /** Folder Kind */
+            folder_kind: string | null;
+            /** Root Id */
+            root_id: string;
+            /** Root Name */
+            root_name: string;
+            /** Label */
+            label: string;
+            /** Is Root */
+            is_root: boolean;
+        };
+        /**
+         * CombinedListing
+         * @description The top level of every root side by side, as folders only; no file is ever loose here.
+         */
+        CombinedListing: {
+            /** Folders */
+            folders: components["schemas"]["CombinedFolder"][];
+            /** Missing Roots */
+            missing_roots: string[];
         };
         /** ContentSettings */
         ContentSettings: {
@@ -1303,6 +1373,11 @@ export interface components {
              * @default false
              */
             show_all_files: boolean;
+            /**
+             * Combined View
+             * @default false
+             */
+            combined_view: boolean;
             /** Model Extensions */
             model_extensions: string[];
             /** Preview Extensions */
@@ -1827,6 +1902,8 @@ export interface components {
             library: components["schemas"]["LibrarySettings"];
             /** Env Overrides */
             env_overrides: string[];
+            /** Pinned */
+            pinned: string[];
         };
         /**
          * SidecarHint
@@ -3811,6 +3888,53 @@ export interface operations {
             };
         };
     };
+    list_combined_entries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CombinedListing"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     list_entries: {
         parameters: {
             query?: {
@@ -4013,6 +4137,66 @@ export interface operations {
                 content: {
                     "image/webp": unknown;
                     "image/*": unknown;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_file: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path: {
+                root_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
                 };
             };
             /** @description Bad Request */

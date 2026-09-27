@@ -210,6 +210,27 @@ Every name also works under a `models/` prefix, so a root may be an install fold
 navigated. The Library lists roots without a kind hint before the ones dedicated to a single
 kind, keeping the configured order within each group, and opens on the first (§12).
 
+**All folders.** `library.combined_view` (**off by default**) puts "All folders" ahead of every
+root and opens the Library on it. `LibraryService.list_combined()` returns **folders only**:
+a root that holds only folders lends its first-level folders, while a root with files at its
+top level — whatever its own listing would show there: models, a diffusers folder, and with
+`show_all_files` any file — becomes **one entry named after its directory** (`is_root`, path
+`""`), so its files and folders stay together instead of scattering among every other root's.
+A WebUI's `models/Lora` root therefore shows as `Lora`. Nothing deeper is ever pulled up, and no
+model detection runs for this listing. A root inside another is left out (the outer one reaches
+it), a directory reached twice through links is listed once where it really is, and a missing or
+unreadable root is reported in `missing_roots` instead of failing. Names that collide — compared
+case-insensitively — are labelled `name (root name)`, and two roots with one name become `name`
+and `name 2`. Every entry carries its `root_id`, so each action goes to its own root; a whole
+root has no rename, move or delete. Opening an entry moves into that root, and a leading
+breadcrumb leads back. Upload, import, new folder and the kind filter are hidden there: there is
+no single folder to put anything in, and no model to filter. The interface uses `*` for this
+entry, so `*` is refused as a root id.
+
+**Downloading a file to the browser** goes through `export_file()`: a regular file inside the
+root, under the same path and link rules as every other operation, never an ignored name such as
+a `.part` still being written. A diffusers folder cannot be one download and is not offered.
+
 **Companions.** A model's companions are the files sharing its stem, assigned to the longest
 matching stem so `a.b.png` belongs to `a.b.safetensors` and not to `a.safetensors`. Every
 operation — move, rename, delete, import — carries them along.
@@ -369,6 +390,13 @@ says so while it applies.
   straight into a `.part` file. Nothing is spooled to a temporary directory.
 - **`GET /api/v1/library/locate?path=`** names the root holding an absolute path, so a client can
   open a folder it only knows by its place on disk — a finished download's, for instance.
+- **`GET /api/v1/library/combined/entries`** is "All folders" (§7), folders only and with no
+  kind filter; the setting only decides whether the interface offers it. **`GET /api/v1/library/roots/{id}/file?path=`** sends a file
+  as an `attachment` (UTF-8 name, `no-store`, byte ranges answered). The client follows a link
+  to it rather than fetching it, so a multi-gigabyte model never sits in a Blob; like a preview,
+  it is authenticated by the token cookie, since a navigation carries no bearer header.
+- The settings view lists `pinned`: the dotted names a host application pinned (§12). Saving
+  one has no effect, so the interface disables its control.
 - **socket.io** is mounted at `/ws` (path `/ws/socket.io`); traffic is server to client only. REST
   stays the source of truth: events invalidate or patch the cache, and a reconnect refetches.
   A job event carries a **snapshot** of the job, never the live object the worker keeps writing
@@ -451,6 +479,14 @@ into one column, rows of controls wrap, and long names get `overflow-wrap: anywh
 the image gallery scrolls sideways, and nested vertical scroll areas are dropped below 600 px so
 the sheet itself takes the gesture.
 
+**A path cut at its start goes through `ui/PathText.vue`.** The left-side ellipsis comes from
+`direction: rtl`, but a leading `/` has no direction of its own, so in a right-to-left line it is
+drawn at the far end: `/root/model` read `root/model/`. PathText isolates the path as
+left-to-right inside that line; `ui.test.ts` fails on `direction: rtl` anywhere else.
+
+**The Hubs model card opens expanded** for every repository shown, even after it was collapsed
+for the last one: it is what the repository is about.
+
 **A row that pairs a name with a control needs `min-width: 0` on the item holding the text.** A
 model file name is one long unbreakable word, so the row's min-content width is the whole name,
 and a flex item keeps `min-width: auto` by default: the card's overflow menu was pushed out and
@@ -481,7 +517,7 @@ in short:
 from sd_model_hub import ModelHubServer, ModelRoot
 
 hub = ModelHubServer(data_dir=..., settings_path=..., model_roots=[ModelRoot(path, layout="comfyui")],
-                     lock_model_roots=True, port=0, api_prefix="/tools/model-hub", settings={...})
+                     lock_model_roots=True, combined_view=True, port=0, api_prefix="/tools/model-hub", settings={...})
 url = hub.start()   # non-blocking, returns the URL; hub.run() blocks; it is a context manager too
 hub.stop()
 ```
@@ -491,6 +527,9 @@ How each part works, so it stays that way:
 - **Pinned settings.** `SettingsService(overrides=…)` holds a layer above the file and the
   environment that is never written back, so `settings={...}` and locked `model_roots` cannot be
   changed through the API. `build_services(settings_overrides=…, roots_locked=…)` passes them on.
+- **All folders.** `combined_view=True` or `False` pins `library.combined_view` (§7) through the
+  same override layer, merged with any other `library` values in `settings`; `None` leaves it
+  to the user. The settings page shows a pinned value disabled, from the view's `pinned` list.
 - **Locked roots.** `LibraryService.roots_locked` makes add, update and remove raise
   `ConflictError`; `GET /app/meta` reports `roots_locked` and the interface hides the actions.
   Unlocked roots are merely seeded at start-up, so the user may add their own.
@@ -572,7 +611,8 @@ One line each; the section in brackets explains why.
 - ControlNet, embedding and upscaler detection rules have only synthetic fixtures.
 - hf-mirror and Gitee AI endpoints were never tested from a network that needs them.
 - Uploads — dropped files and the file picker — are covered at the API level and in unit tests,
-  not by dropping or choosing a file in a real browser.
+  not by dropping or choosing a file in a real browser. Saving a library file through the
+  browser is covered the same way, and so is the "All folders" screen.
 - The Windows credential store, and the app on Windows generally, is untested.
 - **Packaging:** the root `LICENSE` is the GPLv3 text copied from `sd-webui-all-in-one`, and
   `pyproject.toml` declares no `license` and no `urls`, so the published releases carry neither.

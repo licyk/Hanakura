@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query';
 import { computed, type MaybeRefOrGetter, toValue } from 'vue';
 import { api, unwrap } from '@/api/client';
-import { keys } from '@/api/queries/keys';
+import { COMBINED_VIEW_ID, keys } from '@/api/queries/keys';
 import type { S } from '@/api/types';
 
 export const useRoots = () => useQuery({ queryKey: keys.roots, queryFn: () => unwrap(api.GET('/api/v1/library/roots')) });
@@ -19,6 +19,16 @@ export function useEntries(rootId: MaybeRefOrGetter<string | null>, path: MaybeR
           params: { path: { root_id: toValue(rootId)! }, query: { path: toValue(path), kind: toValue(kind) ?? undefined } },
         }),
       ),
+    placeholderData: (prev) => prev,
+  });
+}
+
+/** The top level of every root side by side, as folders, for the Library's "All folders". */
+export function useCombinedEntries(enabled: MaybeRefOrGetter<boolean>) {
+  return useQuery({
+    queryKey: keys.entries(COMBINED_VIEW_ID, ''),
+    enabled: computed(() => toValue(enabled)),
+    queryFn: () => unwrap(api.GET('/api/v1/library/combined/entries')),
     placeholderData: (prev) => prev,
   });
 }
@@ -49,6 +59,7 @@ export function useLibraryMutations() {
   const qc = useQueryClient();
   const refreshRoot = (rootId?: string) => {
     qc.invalidateQueries({ queryKey: rootId ? keys.entries(rootId) : ['library', 'entries'] });
+    if (rootId) qc.invalidateQueries({ queryKey: keys.entries(COMBINED_VIEW_ID) });
     qc.invalidateQueries({ queryKey: rootId ? keys.tree(rootId) : ['library', 'tree'] });
   };
   const refreshRoots = () => qc.invalidateQueries({ queryKey: keys.roots });

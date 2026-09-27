@@ -99,8 +99,10 @@ function openDirect() {
 
 const selectedSize = computed(() => (repo.data.value?.files ?? []).filter((f) => selection.value.includes(f.path)).reduce((a, f) => a + (f.size ?? 0), 0));
 const readme = computed(() => (repo.data.value?.description ?? '').replace(/^---[\s\S]*?---\s*/, '').slice(0, 20000));
-// The model card is Markdown; it is rendered with raw HTML off, so the repository cannot inject any.
-const readmeOpen = ref(false);
+// The model card is Markdown with some HTML, rendered through MarkdownContent's sanitiser. It is
+// what a repository is about, so it opens expanded for every repository shown.
+const readmeOpen = ref(true);
+watch(repoId, () => (readmeOpen.value = true));
 
 const pickerOpen = ref(false);
 const create = useCreateDownload();

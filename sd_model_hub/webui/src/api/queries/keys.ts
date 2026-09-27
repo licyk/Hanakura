@@ -1,3 +1,9 @@
+/**
+ * Stands for "every root" where a root id is expected; the server refuses it as a real root's id.
+ * The combined listing is cached under it, so invalidating any root must invalidate it too.
+ */
+export const COMBINED_VIEW_ID = '*';
+
 /** Query keys, shared by the query modules and the socket handlers. */
 export const keys = {
   meta: ['app', 'meta'] as const,

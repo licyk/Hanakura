@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from sd_model_hub import ModelHubServer, ModelRoot
 from sd_model_hub.api.app import create_app, normalize_prefix
 from sd_model_hub.core.context import build_services
-from sd_model_hub.core.errors import ConflictError
+from sd_model_hub.core.errors import ConflictError, ValidationError
 from sd_model_hub.core.library.models import RootCreate, RootUpdate
 from tests.conftest import LORA_SDXL, write_safetensors
 
@@ -144,6 +144,35 @@ def test_pinned_settings_cannot_be_changed(tmp_path):
         assert services.settings.settings.content.nsfw_mode == "hide"
     finally:
         hub.stop()
+
+
+@pytest.mark.parametrize("value", [True, False])
+def test_combined_view_can_be_pinned(tmp_path, value):
+    hub = ModelHubServer(data_dir=tmp_path / "data", port=0, combined_view=value, settings={"library": {"show_all_files": True}})
+    services = hub._build()
+    try:
+        services.settings.update({"library": {"combined_view": not value}})
+        assert services.settings.settings.library.combined_view is value
+        # Pinning it keeps the host's other library settings.
+        assert services.settings.settings.library.show_all_files is True
+        assert "library.combined_view" in services.settings.view().pinned
+    finally:
+        services.close()
+
+
+def test_combined_view_is_left_to_the_user_by_default(tmp_path):
+    services = ModelHubServer(data_dir=tmp_path / "data", port=0)._build()
+    try:
+        assert services.settings.settings.library.combined_view is False
+        services.settings.update({"library": {"combined_view": True}})
+        assert services.settings.settings.library.combined_view is True
+    finally:
+        services.close()
+
+
+def test_the_combined_view_id_cannot_be_a_host_root(tmp_path, models):
+    with pytest.raises(ValidationError):
+        ModelHubServer(data_dir=tmp_path / "data", model_roots=[ModelRoot(models, id="*")], lock_model_roots=True)
 
 
 # -- model folders -------------------------------------------------------------

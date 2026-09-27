@@ -120,6 +120,18 @@ class SettingsService:
     def env_override_names(self) -> list[str]:
         return sorted(k for k in self._environ if k.startswith(ENV_PREFIX) and k != DATA_DIR_ENV and "__" in k)
 
+    def pinned_names(self) -> list[str]:
+        """Dotted names of every value the host application pinned, such as ``library.combined_view``."""
+
+        def walk(data: dict[str, Any], prefix: str) -> list[str]:
+            names: list[str] = []
+            for key, value in data.items():
+                name = f"{prefix}{key}"
+                names += walk(value, f"{name}.") if isinstance(value, dict) and value else [name]
+            return names
+
+        return sorted(walk(self._overrides, ""))
+
     def reload(self) -> None:
         with self._lock:
             if self.path.is_file():
@@ -232,4 +244,5 @@ class SettingsService:
             content=s.content,
             library=s.library,
             env_overrides=self.env_override_names(),
+            pinned=self.pinned_names(),
         )

@@ -73,6 +73,29 @@ class FolderListing(Record):
     pending_detection: int = 0
 
 
+COMBINED_VIEW_ID = "*"
+"""Stands for "every root" in the interface's root selector, so no root may use it as its id."""
+
+
+class CombinedFolder(FolderEntry):
+    """One entry of the combined view: a first-level folder of a root, or a whole root."""
+
+    root_id: str
+    root_name: str
+    label: str
+    """The name, or ``name (root name)`` when another entry of the combined view has the same name."""
+    is_root: bool
+    """The root itself, named after its directory, because it has files at its top level. Its ``path`` is ``""``."""
+
+
+class CombinedListing(Record):
+    """The top level of every root side by side, as folders only; no file is ever loose here."""
+
+    folders: list[CombinedFolder]
+    missing_roots: list[str] = Field(default_factory=list)
+    """Roots whose folder does not exist or cannot be read, left out rather than failing the whole listing."""
+
+
 class TreeNode(Record):
     name: str
     path: str

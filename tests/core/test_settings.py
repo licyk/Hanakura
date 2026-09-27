@@ -40,6 +40,14 @@ def test_env_overrides_file_but_is_not_saved(tmp_path):
     assert s.view().env_overrides == ["SD_MODEL_HUB_CONTENT__NSFW_MODE", "SD_MODEL_HUB_SERVER__PORT"]
 
 
+def test_pinned_settings_are_named_in_the_view(tmp_path):
+    s = SettingsService(data_dir=tmp_path, environ={}, overrides={"library": {"combined_view": True}, "server": {"access_token": "secret"}})
+    view = s.view()
+    assert view.pinned == ["library.combined_view", "server.access_token"]
+    assert "secret" not in view.model_dump_json()
+    assert SettingsService(data_dir=tmp_path / "other", environ={}).view().pinned == []
+
+
 def test_invalid_values_rejected(tmp_path):
     s = SettingsService(data_dir=tmp_path, environ={})
     with pytest.raises(ValidationError):

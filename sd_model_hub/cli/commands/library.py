@@ -66,9 +66,23 @@ def library_list(
     root: Annotated[str | None, typer.Option(help="Root id; PATH is then relative to it")] = None,
     recursive: Annotated[bool, typer.Option("--recursive", "-r", help="Include subfolders")] = False,
     kind: Annotated[str | None, typer.Option(help="Only this kind, e.g. lora, checkpoint, unknown")] = None,
+    all_roots: Annotated[bool, typer.Option("--all-roots", help="The top level of every root side by side, as the web UI's All folders")] = False,
     json_output: Annotated[bool, typer.Option("--json", help="Print JSON")] = False,
 ) -> None:
     """List models in a folder."""
+    if all_roots:
+        if path is not None or root is not None or recursive or kind is not None:
+            from sd_model_hub.core.errors import ValidationError
+
+            raise ValidationError("--all-roots lists the top level of every root as folders; it takes no PATH, --root, --recursive or --kind")
+        with open_services() as s:
+            combined = s.library.list_combined()
+        if json_output:
+            print_json(combined)
+            return
+        rows = [(f"{f.label}/", "whole root" if f.is_root else "folder", f.folder_kind or "", f.root_name, f.path or "/") for f in combined.folders]
+        print_table("All folders", ["Name", "Shows", "Kind", "Root", "Path in root"], rows)
+        return
     with open_services() as s:
         if root is None:
             roots = s.library.list_roots()

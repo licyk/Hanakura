@@ -83,6 +83,9 @@ class LibrarySettings(Record):
     # and loose text files hides the models in it. On, every file a model does not already carry
     # as a companion is listed too, so a folder can be managed like one in a file manager.
     show_all_files: bool = False
+    # Off by default: most installations have one root, where a view of every root adds nothing.
+    # On, the Library offers "All folders" first: the top level of every root side by side.
+    combined_view: bool = False
     model_extensions: list[str] = Field(default_factory=lambda: list(DEFAULT_MODEL_EXTENSIONS))
     preview_extensions: list[str] = Field(default_factory=lambda: list(DEFAULT_PREVIEW_EXTENSIONS))
 
@@ -162,3 +165,5 @@ class SettingsView(Record):
     content: ContentSettings
     library: LibrarySettings
     env_overrides: list[str]
+    pinned: list[str] = Field(default_factory=list)
+    """Dotted names of the settings a host application pinned; changing them has no effect."""

@@ -2,11 +2,11 @@
 import { useQueryClient } from '@tanstack/vue-query';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { previewUrl } from '@/api/client';
-import { keys } from '@/api/queries/keys';
-import { useEntries, useLibraryMutations, useRoots, useTree } from '@/api/queries/library';
+import { previewUrl, saveFile } from '@/api/client';
+import { COMBINED_VIEW_ID, keys } from '@/api/queries/keys';
+import { useCombinedEntries, useEntries, useLibraryMutations, useRoots, useTree } from '@/api/queries/library';
 import { useMeta } from '@/api/queries/app';
-import type { FolderEntry, ModelEntry } from '@/api/types';
+import type { FolderEntry, ModelEntry, PathRef, TreeNode } from '@/api/types';
 import FileDropZone, { type DroppedFile } from '@/components/FileDropZone.vue';
 import FolderTree from '@/components/FolderTree.vue';
 import ModelCard from '@/components/ModelCard.vue';
@@ -32,6 +32,7 @@ import {
   EmptyState,
   IconButton,
   PathField,
+  PathText,
   SegmentedButton,
   SelectField,
   Skeleton,
@@ -70,12 +71,24 @@ const sortedRoots = computed(() => {
   return [...list.filter((r) => !r.kind), ...list.filter((r) => r.kind)];
 });
 
+/**
+ * "All folders" lists the top level of every root side by side. When library.combined_view is on
+ * it leads the root list, ahead of even the whole model directory, and is what the view opens on.
+ */
+const combinedEnabled = computed(() => settings.data.value?.library.combined_view === true);
+const isCombined = computed(() => rootId.value === COMBINED_VIEW_ID);
+
 watch(
-  sortedRoots,
-  (list) => {
+  [sortedRoots, combinedEnabled],
+  ([list, combined]) => {
     if (!roots.data.value) return;
-    if (!list.some((r) => r.id === rootId.value)) {
-      rootId.value = list[0]?.id ?? null;
+    // Whether "All folders" exists is not known until the settings arrive; a remembered or
+    // first choice waits for them rather than settling on a root and never moving.
+    const settingsKnown = !!settings.data.value || settings.isError.value;
+    if (!settingsKnown && (rootId.value === null || rootId.value === COMBINED_VIEW_ID)) return;
+    const ids = [...(combined && list.length ? [COMBINED_VIEW_ID] : []), ...list.map((r) => r.id)];
+    if (!ids.includes(rootId.value ?? '')) {
+      rootId.value = ids[0] ?? null;
       path.value = '';
     }
   },
@@ -84,7 +97,7 @@ watch(
 watch([rootId, path], ([r, p]) => {
   if (r) prefs.prefs.lastRoot = r;
   router.replace({ query: { root: r ?? undefined, path: p || undefined } });
-  selection.value = new Set();
+  selection.value = new Map();
 });
 // A link pasted while this view is already open must move it, not only fill it on first load.
 watch(
@@ -97,75 +110,143 @@ watch(
   },
 );
 
-const entries = useEntries(rootId, path, kind);
-const tree = useTree(rootId);
+const entries = useEntries(() => (isCombined.value ? null : rootId.value), path, kind);
+const combined = useCombinedEntries(isCombined);
+const tree = useTree(() => (isCombined.value ? null : rootId.value));
 const root = computed(() => roots.data.value?.find((r) => r.id === rootId.value) ?? null);
-const listing = computed(() => entries.data.value);
-const rootOptions = computed(() => sortedRoots.value.map((r) => ({ value: r.id, label: r.name })));
+const current = computed(() => (isCombined.value ? combined : entries));
+const loading = computed(() => current.value.isPending.value);
+const failed = computed(() => current.value.isError.value);
+const failure = computed(() => (current.value.error?.value as Error | null | undefined)?.message);
+const rootOptions = computed(() => [
+  ...(combinedEnabled.value && sortedRoots.value.length ? [{ value: COMBINED_VIEW_ID, label: t('library.allFolders') }] : []),
+  ...sortedRoots.value.map((r) => ({ value: r.id, label: r.name })),
+]);
 const kindOptions = computed(() => [{ value: '', label: t('browse.allKinds') }, ...(meta.data.value?.kinds ?? []).map((k) => ({ value: k, label: kindLabel(k) }))]);
-const crumbs = computed(() => [{ label: root.value?.name ?? '', value: '' }, ...pathSegments(path.value).map((s) => ({ label: s.name, value: s.path }))]);
+
+// No folder's path is "/", so this crumb cannot be mistaken for one.
+const ALL_CRUMB = '/';
+const crumbs = computed(() => {
+  if (isCombined.value) return [{ label: t('library.allFolders'), value: '' }];
+  const trail = [{ label: root.value?.name ?? '', value: '' }, ...pathSegments(path.value).map((s) => ({ label: s.name, value: s.path }))];
+  return combinedEnabled.value ? [{ label: t('library.allFolders'), value: ALL_CRUMB }, ...trail] : trail;
+});
 
 function navigate(to: string) {
   direction.value = to.length >= path.value.length ? 1 : -1;
   path.value = to;
 }
 
-type Item = { type: 'folder'; folder: FolderEntry } | { type: 'model'; model: ModelEntry };
-const items = computed<Item[]>(() => [
-  ...(listing.value?.folders ?? []).map((folder) => ({ type: 'folder' as const, folder })),
-  ...(listing.value?.models ?? []).map((model) => ({ type: 'model' as const, model })),
-]);
-const itemKey = (i: Item) => (i.type === 'folder' ? `f:${i.folder.path}` : `m:${i.model.path}`);
+function onCrumb(value: string) {
+  if (value !== ALL_CRUMB) return navigate(value);
+  direction.value = -1;
+  rootId.value = COMBINED_VIEW_ID;
+  path.value = '';
+}
+
+/**
+ * Every item carries its root: in "All folders" the folders on screen come from several roots, and
+ * each action goes to the one the item belongs to. ``label`` tells equal names apart there, and an
+ * ``isRoot`` entry is a whole root kept together because it has files at its top level.
+ */
+type FolderItem = { type: 'folder'; rootId: string; label: string; rootName: string | null; isRoot: boolean; folder: FolderEntry };
+type ModelItem = { type: 'model'; rootId: string; model: ModelEntry };
+type Item = FolderItem | ModelItem;
+const items = computed<Item[]>(() => {
+  // "All folders" holds folders only: a root with files is one entry, so no file is ever loose there.
+  if (isCombined.value) {
+    return (combined.data.value?.folders ?? []).map(
+      (folder): FolderItem => ({ type: 'folder', rootId: folder.root_id, label: folder.label, rootName: folder.root_name, isRoot: folder.is_root, folder }),
+    );
+  }
+  const id = rootId.value ?? '';
+  const l = entries.data.value;
+  return [
+    ...(l?.folders ?? []).map((folder): FolderItem => ({ type: 'folder', rootId: id, label: folder.name, rootName: null, isRoot: false, folder })),
+    ...(l?.models ?? []).map((model): ModelItem => ({ type: 'model', rootId: id, model })),
+  ];
+});
+const itemRef = (i: Item): PathRef => ({ root_id: i.rootId, path: i.type === 'folder' ? i.folder.path : i.model.path });
+const refKey = (r: PathRef) => JSON.stringify([r.root_id, r.path]);
+const itemKey = (i: Item) => `${i.type}:${refKey(itemRef(i))}`;
+
+function openFolder(item: FolderItem) {
+  if (!isCombined.value) return navigate(item.folder.path);
+  direction.value = 1;
+  rootId.value = item.rootId;
+  path.value = item.folder.path;
+}
+
+/** In "All folders" the side lists the same first-level folders, under the same labels. */
+const sideTree = computed<TreeNode | null>(() => {
+  if (!isCombined.value) return tree.data.value ?? null;
+  if (!combined.data.value) return null;
+  const folders = items.value.filter((i): i is FolderItem => i.type === 'folder');
+  return { name: t('library.allFolders'), path: '', folder_kind: null, children: folders.map((i) => ({ name: i.label, path: itemKey(i), folder_kind: i.folder.folder_kind ?? null, children: [] })) };
+});
+function onTreeSelect(key: string) {
+  if (!isCombined.value) return navigate(key);
+  const item = items.value.find((i) => itemKey(i) === key);
+  if (item?.type === 'folder') openFolder(item);
+}
+const missingRoots = computed(() => {
+  const ids = isCombined.value ? (combined.data.value?.missing_roots ?? []) : [];
+  return ids.map((id) => roots.data.value?.find((r) => r.id === id)?.name ?? id).join(', ');
+});
 
 // Selection
-const selection = ref(new Set<string>());
-const toggle = (p: string, on: boolean) => {
-  const next = new Set(selection.value);
-  if (on) next.add(p);
-  else next.delete(p);
+const selection = ref(new Map<string, PathRef>());
+const isSelected = (i: Item) => selection.value.has(refKey(itemRef(i)));
+const toggle = (i: Item, on: boolean) => {
+  const r = itemRef(i);
+  const next = new Map(selection.value);
+  if (on) next.set(refKey(r), r);
+  else next.delete(refKey(r));
   selection.value = next;
 };
+const selected = computed(() => [...selection.value.values()]);
 
 // Dialogs
 const infoOpen = ref(false);
+const infoRoot = ref<string | null>(null);
 const infoPath = ref<string | null>(null);
 const infoRect = ref<DOMRect | null>(null);
-function openInfo(model: ModelEntry, rect: DOMRect | null) {
-  infoPath.value = model.path;
+function openInfo(item: ModelItem, rect: DOMRect | null) {
+  infoRoot.value = item.rootId;
+  infoPath.value = item.model.path;
   infoRect.value = rect;
   infoOpen.value = true;
 }
 
 const renameOpen = ref(false);
-const renameTarget = ref<{ path: string; name: string; isFile: boolean } | null>(null);
+const renameTarget = ref<{ ref: PathRef; name: string; isFile: boolean } | null>(null);
 const renameError = ref<string | null>(null);
-function startRename(path: string, name: string, isFile: boolean) {
-  renameTarget.value = { path, name, isFile };
+function startRename(ref_: PathRef, name: string, isFile: boolean) {
+  renameTarget.value = { ref: ref_, name, isFile };
   renameError.value = null;
   renameOpen.value = true;
 }
 function doRename(newName: string) {
-  if (!rootId.value || !renameTarget.value) return;
+  if (!renameTarget.value) return;
   m.rename.mutate(
-    { root_id: rootId.value, path: renameTarget.value.path, new_name: newName },
+    { ...renameTarget.value.ref, new_name: newName },
     { onSuccess: () => (renameOpen.value = false), onError: (e) => (renameError.value = (e as Error).message) },
   );
 }
 
 const moveOpen = ref(false);
-const movePaths = ref<string[]>([]);
-function startMove(paths: string[]) {
-  movePaths.value = paths;
+const moveItems = ref<PathRef[]>([]);
+function startMove(refs: PathRef[]) {
+  moveItems.value = refs;
   moveOpen.value = true;
 }
 function doMove(dest: { rootId: string; dir: string }) {
-  if (!rootId.value) return;
   m.move.mutate(
-    { items: movePaths.value.map((p) => ({ root_id: rootId.value!, path: p })), dest_root_id: dest.rootId, dest_dir: dest.dir, on_conflict: 'error' },
+    { items: moveItems.value, dest_root_id: dest.rootId, dest_dir: dest.dir, on_conflict: 'error' },
     {
       onSuccess: () => {
         moveOpen.value = false;
-        selection.value = new Set();
+        selection.value = new Map();
         qc.invalidateQueries({ queryKey: ['library'] });
       },
       onError: (e) => snackbar.error((e as Error).message),
@@ -174,22 +255,21 @@ function doMove(dest: { rootId: string; dir: string }) {
 }
 
 const deleteOpen = ref(false);
-const deletePaths = ref<string[]>([]);
+const deleteItems = ref<PathRef[]>([]);
 const permanent = ref(false);
 const toTrash = computed(() => settings.data.value?.library.delete_to_trash !== false);
-function startDelete(paths: string[]) {
-  deletePaths.value = paths;
+function startDelete(refs: PathRef[]) {
+  deleteItems.value = refs;
   permanent.value = !toTrash.value;
   deleteOpen.value = true;
 }
 function doDelete() {
-  if (!rootId.value) return;
   m.remove.mutate(
-    { items: deletePaths.value.map((p) => ({ root_id: rootId.value!, path: p })), permanent: permanent.value },
+    { items: deleteItems.value, permanent: permanent.value },
     {
       onSuccess: () => {
         deleteOpen.value = false;
-        selection.value = new Set();
+        selection.value = new Map();
         qc.invalidateQueries({ queryKey: ['library'] });
       },
       onError: (e) => snackbar.error((e as Error).message),
@@ -197,10 +277,13 @@ function doDelete() {
   );
 }
 
+// Creating, importing and uploading need one folder to land in, which "All folders" is not.
+const canAdd = computed(() => !!rootId.value && !isCombined.value);
+
 const folderOpen = ref(false);
 const folderName = ref('');
 function doCreateFolder() {
-  if (!rootId.value || !folderName.value.trim()) return;
+  if (!canAdd.value || !rootId.value || !folderName.value.trim()) return;
   m.createFolder.mutate(
     { root_id: rootId.value, path: path.value, name: folderName.value.trim() },
     {
@@ -217,7 +300,7 @@ const importOpen = ref(false);
 const importPath = ref('');
 const importMove = ref(false);
 function doImport() {
-  if (!rootId.value || !importPath.value.trim()) return;
+  if (!canAdd.value || !rootId.value || !importPath.value.trim()) return;
   m.importPaths.mutate(
     { sources: [importPath.value.trim()], root_id: rootId.value, rel_dir: path.value, move: importMove.value, on_conflict: 'error' },
     {
@@ -276,37 +359,44 @@ function onRootMenu(id: string) {
   if (id === 'remove') removeRootOpen.value = true;
 }
 
-const modelMenu = computed<MenuItem[]>(() => [
+// A diffusers model is a folder, which a browser cannot save as one download.
+const modelMenu = (model: ModelEntry): MenuItem[] => [
   { id: 'info', label: t('common.info'), icon: icons.Info },
+  ...(model.is_dir ? [] : [{ id: 'download', label: t('library.download'), icon: icons.Download }]),
   { id: 'rename', label: t('common.rename'), icon: icons.Pencil },
   { id: 'move', label: t('common.move'), icon: icons.Move },
   { id: 'delete', label: t('common.delete'), icon: icons.Trash2, danger: true },
-]);
-function onModelMenu(id: string, model: ModelEntry) {
-  if (id === 'info') openInfo(model, null);
-  if (id === 'rename') startRename(model.path, model.name, !model.is_dir);
-  if (id === 'move') startMove([model.path]);
-  if (id === 'delete') startDelete([model.path]);
+];
+function onModelMenu(id: string, item: ModelItem) {
+  if (id === 'info') openInfo(item, null);
+  if (id === 'download') saveFile(item.rootId, item.model.path);
+  if (id === 'rename') startRename(itemRef(item), item.model.name, !item.model.is_dir);
+  if (id === 'move') startMove([itemRef(item)]);
+  if (id === 'delete') startDelete([itemRef(item)]);
 }
 const folderMenu = computed<MenuItem[]>(() => [
   { id: 'rename', label: t('common.rename'), icon: icons.Pencil },
   { id: 'move', label: t('common.move'), icon: icons.Move },
   { id: 'delete', label: t('common.delete'), icon: icons.Trash2, danger: true },
 ]);
-function onFolderMenu(id: string, folder: FolderEntry) {
-  if (id === 'rename') startRename(folder.path, folder.name, false);
-  if (id === 'move') startMove([folder.path]);
-  if (id === 'delete') startDelete([folder.path]);
+function onFolderMenu(id: string, item: FolderItem) {
+  if (id === 'rename') startRename(itemRef(item), item.folder.name, false);
+  if (id === 'move') startMove([itemRef(item)]);
+  if (id === 'delete') startDelete([itemRef(item)]);
 }
 
 function rescan() {
   if (!rootId.value) return;
-  m.scan.mutate({ rootId: rootId.value, path: path.value }, { onSuccess: () => snackbar.show(t('library.scanStarted')) });
+  const targets = isCombined.value ? sortedRoots.value.map((r) => ({ rootId: r.id, path: '' })) : [{ rootId: rootId.value, path: path.value }];
+  Promise.all(targets.map((v) => m.scan.mutateAsync(v))).then(
+    () => snackbar.show(t('library.scanStarted')),
+    (e) => snackbar.error((e as Error).message),
+  );
 }
 
 // Files land in the folder on screen, whether they were dropped or chosen in the file picker.
 function startUpload(files: DroppedFile[]) {
-  if (!rootId.value || !files.length) return;
+  if (!canAdd.value || !rootId.value || !files.length) return;
   uploads.enqueue(rootId.value, path.value, files);
   snackbar.show(t('library.uploadStarted', { n: files.length }), { actionLabel: t('browse.openDownloads'), action: () => (downloadsStore.drawerOpen = true) });
 }
@@ -336,6 +426,7 @@ const uploadMenu = computed<MenuItem[]>(() => [
 const stopListening = uploads.onFinished((item) => {
   if (item.state === 'failed') snackbar.error(t('library.uploadFailed', { name: item.name, error: item.error ?? '' }));
   qc.invalidateQueries({ queryKey: keys.entries(item.rootId) });
+  qc.invalidateQueries({ queryKey: keys.entries(COMBINED_VIEW_ID) });
   qc.invalidateQueries({ queryKey: keys.tree(item.rootId) });
 });
 onBeforeUnmount(stopListening);
@@ -376,35 +467,39 @@ const kindFor = (model: ModelEntry) => {
             <template #default="{ toggle }"><IconButton :icon="icons.MoreVertical" :label="t('common.more')" @click="toggle" /></template>
           </AppMenu>
         </div>
-        <p v-if="root" class="type-body-small muted root-path" :title="root.path">{{ root.path }}</p>
+        <PathText v-if="root" :path="root.path" class="type-body-small muted" />
+        <p v-else-if="isCombined" class="type-body-small muted hint">{{ t('library.allFoldersHint') }}</p>
         <p v-if="root && !root.exists" class="type-body-small error">{{ t('library.missing') }}</p>
+        <p v-if="missingRoots" class="type-body-small error">{{ t('library.missingRoots', { names: missingRoots }) }}</p>
         <div class="tree" role="tree">
-          <FolderTree v-if="tree.data.value" :node="tree.data.value" :selected="path" @select="navigate" />
+          <FolderTree v-if="sideTree" :node="sideTree" :selected="isCombined ? '' : path" @select="onTreeSelect" />
           <div v-else class="tree-skeleton"><Skeleton v-for="i in 6" :key="i" height="28px" shape="full" /></div>
         </div>
       </aside>
 
       <section class="main">
-        <FileDropZone :label="t('library.dropHere', { folder: path || root?.name || '/' })" :disabled="!rootId" @files="startUpload">
+        <FileDropZone :label="t('library.dropHere', { folder: path || root?.name || '/' })" :disabled="!canAdd" @files="startUpload">
           <div class="head">
-            <Breadcrumbs :crumbs="crumbs" @navigate="navigate" />
+            <Breadcrumbs :crumbs="crumbs" @navigate="onCrumb" />
             <div class="toolbar">
               <template v-if="selection.size">
                 <span class="type-label-large">{{ t('library.selected', { n: selection.size }) }}</span>
-                <IconButton :icon="icons.Move" :label="t('common.move')" @click="startMove([...selection])" />
-                <IconButton :icon="icons.Trash2" :label="t('common.delete')" @click="startDelete([...selection])" />
-                <IconButton :icon="icons.X" :label="t('library.clearSelection')" @click="selection = new Set()" />
+                <IconButton :icon="icons.Move" :label="t('common.move')" @click="startMove(selected)" />
+                <IconButton :icon="icons.Trash2" :label="t('common.delete')" @click="startDelete(selected)" />
+                <IconButton :icon="icons.X" :label="t('library.clearSelection')" @click="selection = new Map()" />
               </template>
               <template v-else>
-                <AppMenu :items="uploadMenu" @select="pickFiles($event === 'folder')">
-                  <template #default="{ toggle }">
-                    <AppButton variant="tonal" :icon="icons.Upload" :disabled="!rootId" @click="toggle">{{ t('library.upload') }}</AppButton>
-                  </template>
-                </AppMenu>
-                <AppButton variant="text" :icon="icons.FolderInput" @click="importOpen = true">{{ t('library.import') }}</AppButton>
-                <IconButton :icon="icons.FolderPlus" :label="t('library.newFolder')" @click="folderOpen = true" />
+                <template v-if="canAdd">
+                  <AppMenu :items="uploadMenu" @select="pickFiles($event === 'folder')">
+                    <template #default="{ toggle }">
+                      <AppButton variant="tonal" :icon="icons.Upload" @click="toggle">{{ t('library.upload') }}</AppButton>
+                    </template>
+                  </AppMenu>
+                  <AppButton variant="text" :icon="icons.FolderInput" @click="importOpen = true">{{ t('library.import') }}</AppButton>
+                  <IconButton :icon="icons.FolderPlus" :label="t('library.newFolder')" @click="folderOpen = true" />
+                </template>
                 <IconButton :icon="icons.RefreshCw" :label="t('library.rescan')" :spin="m.scan.isPending.value" @click="rescan" />
-                <SelectField :model-value="kind ?? ''" :label="t('library.filterKind')" :options="kindOptions" class="kind" @update:model-value="kind = $event || null" />
+                <SelectField v-if="!isCombined" :model-value="kind ?? ''" :label="t('library.filterKind')" :options="kindOptions" class="kind" @update:model-value="kind = $event || null" />
                 <SegmentedButton
                   v-model="prefs.prefs.libraryView"
                   :options="[
@@ -418,23 +513,27 @@ const kindFor = (model: ModelEntry) => {
 
           <Transition name="shared-axis-x" mode="out-in">
             <div :key="`${rootId}:${path}:${kind}`" class="content" :style="{ '--axis-dir': direction }">
-              <div v-if="entries.isPending.value" class="skeletons">
+              <div v-if="loading" class="skeletons">
                 <div v-for="i in 10" :key="i" class="skeleton-card"><Skeleton height="200px" shape="medium" /><Skeleton width="70%" /></div>
               </div>
-              <EmptyState v-else-if="entries.isError.value" :icon="icons.AlertTriangle" :title="t('common.error')" :text="(entries.error.value as Error)?.message" />
+              <EmptyState v-else-if="failed" :icon="icons.AlertTriangle" :title="t('common.error')" :text="failure" />
+              <EmptyState v-else-if="!items.length && isCombined" :icon="icons.FolderOpen" :title="t('library.emptyTitle')" :text="t('library.allFoldersEmptyText')" />
               <EmptyState v-else-if="!items.length" :icon="icons.FolderOpen" :title="t('library.emptyTitle')" :text="t('library.emptyText')">
-                <AppButton variant="tonal" :icon="icons.Upload" :disabled="!rootId" @click="pickFiles(false)">{{ t('library.upload') }}</AppButton>
+                <AppButton variant="tonal" :icon="icons.Upload" :disabled="!canAdd" @click="pickFiles(false)">{{ t('library.upload') }}</AppButton>
                 <AppButton variant="text" :icon="icons.FolderInput" @click="importOpen = true">{{ t('library.import') }}</AppButton>
               </EmptyState>
               <ModelGrid v-else :items="items" :item-key="itemKey" :layout="prefs.prefs.libraryView">
                 <template #default="{ item }">
-                  <button v-if="item.type === 'folder'" type="button" class="folder state-layer" :class="`folder-${prefs.prefs.libraryView}`" @click="navigate(item.folder.path)">
+                  <button v-if="item.type === 'folder'" type="button" class="folder state-layer" :class="`folder-${prefs.prefs.libraryView}`" @click="openFolder(item)">
                     <span class="folder-icon"><AppIcon :icon="icons.Folder" :size="24" /></span>
                     <span class="folder-text">
-                      <span class="type-title-small folder-name">{{ item.folder.name }}</span>
-                      <span v-if="item.folder.folder_kind" class="type-body-small muted">{{ kindLabel(item.folder.folder_kind) }}</span>
+                      <span class="type-title-small folder-name">{{ item.label }}</span>
+                      <span v-if="item.folder.folder_kind || item.rootName" class="type-body-small muted folder-meta">
+                        {{ [item.folder.folder_kind ? kindLabel(item.folder.folder_kind) : null, item.rootName].filter(Boolean).join(' · ') }}
+                      </span>
                     </span>
-                    <AppMenu :items="folderMenu" @select="onFolderMenu($event, item.folder)">
+                    <!-- A root cannot be renamed, moved or deleted from here. -->
+                    <AppMenu v-if="!item.isRoot" :items="folderMenu" @select="onFolderMenu($event, item)">
                       <template #default="{ toggle }"><IconButton :icon="icons.MoreVertical" :label="t('common.more')" @click.stop="toggle" /></template>
                     </AppMenu>
                   </button>
@@ -443,25 +542,25 @@ const kindFor = (model: ModelEntry) => {
                     :layout="prefs.prefs.libraryView"
                     :title="item.model.name"
                     :subtitle="formatBytes(item.model.size)"
-                    :preview="item.model.preview && rootId ? previewUrl(rootId, item.model.preview, prefs.prefs.libraryView === 'list' ? 128 : 384) : null"
+                    :preview="item.model.preview ? previewUrl(item.rootId, item.model.preview, prefs.prefs.libraryView === 'list' ? 128 : 384) : null"
                     :fallback-icon="item.model.is_model ? undefined : icons.FileText"
                     :kind="kindFor(item.model)"
                     :base="baseFor(item.model)"
                     :warning="warningFor(item.model)"
-                    :pending="item.model.is_model && !item.model.detection && (listing?.pending_detection ?? 0) > 0"
-                    :selected="selection.has(item.model.path)"
-                    @activate="openInfo(item.model, $event)"
+                    :pending="item.model.is_model && !item.model.detection && (entries.data.value?.pending_detection ?? 0) > 0"
+                    :selected="isSelected(item)"
+                    @activate="openInfo(item, $event)"
                   >
                     <template #select>
                       <Checkbox
-                        :model-value="selection.has(item.model.path)"
+                        :model-value="isSelected(item)"
                         :dense="prefs.prefs.libraryView === 'list'"
                         :class="prefs.prefs.libraryView === 'list' ? '' : 'select-box'"
-                        @update:model-value="toggle(item.model.path, $event)"
+                        @update:model-value="toggle(item, $event)"
                       />
                     </template>
                     <template #actions>
-                      <AppMenu :items="modelMenu" @select="onModelMenu($event, item.model)">
+                      <AppMenu :items="modelMenu(item.model)" @select="onModelMenu($event, item)">
                         <template #default="{ toggle: open }"><IconButton :icon="icons.MoreVertical" :label="t('common.more')" @click="open" /></template>
                       </AppMenu>
                     </template>
@@ -474,12 +573,12 @@ const kindFor = (model: ModelEntry) => {
       </section>
     </template>
 
-    <ModelInfoDialog v-model:open="infoOpen" :root-id="rootId" :path="infoPath" :from-rect="infoRect" />
+    <ModelInfoDialog v-model:open="infoOpen" :root-id="infoRoot" :path="infoPath" :from-rect="infoRect" />
     <RenameDialog v-model:open="renameOpen" :name="renameTarget?.name ?? ''" :is-file="renameTarget?.isFile" :loading="m.rename.isPending.value" :error="renameError" @confirm="doRename" />
-    <MoveDialog v-model:open="moveOpen" :count="movePaths.length" :root-id="rootId" :loading="m.move.isPending.value" @confirm="doMove" />
+    <MoveDialog v-model:open="moveOpen" :count="moveItems.length" :root-id="moveItems[0]?.root_id ?? null" :loading="m.move.isPending.value" @confirm="doMove" />
     <ConfirmDialog
       v-model:open="deleteOpen"
-      :title="t('library.deleteTitle', { n: deletePaths.length })"
+      :title="t('library.deleteTitle', { n: deleteItems.length })"
       :message="permanent ? t('library.deletePermanent') : t('library.deleteTrash')"
       :confirm-label="t('common.delete')"
       :cancel-label="t('common.cancel')"
@@ -524,7 +623,7 @@ const kindFor = (model: ModelEntry) => {
 .side { display: flex; flex-direction: column; gap: var(--app-space-2); padding: var(--app-space-4); border-right: 1px solid var(--md-sys-color-outline-variant); min-height: 0; }
 .root-row { display: flex; align-items: center; gap: var(--app-space-1); }
 .root-select { flex: 1; min-width: 0; }
-.root-path { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+.hint { margin: 0; }
 .error { color: var(--md-sys-color-error); margin: 0; }
 .tree { flex: 1; overflow: auto; margin: 0 calc(-1 * var(--app-space-2)); }
 .tree-skeleton { display: flex; flex-direction: column; gap: var(--app-space-2); padding: var(--app-space-2); }
@@ -543,7 +642,7 @@ const kindFor = (model: ModelEntry) => {
 .folder-list { min-height: 56px; }
 .folder-icon { display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--md-sys-shape-corner-small); background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); flex: none; }
 .folder-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.folder-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folder-name, .folder-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .select-box { padding: 2px; border-radius: var(--md-sys-shape-corner-small); background: color-mix(in srgb, var(--md-sys-color-surface) 70%, transparent); }
 .form { display: flex; flex-direction: column; gap: var(--app-space-3); }
 @media (max-width: 839px) {

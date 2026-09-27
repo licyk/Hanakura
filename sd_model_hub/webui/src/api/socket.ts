@@ -2,7 +2,7 @@ import type { QueryClient } from '@tanstack/vue-query';
 import { io, type Socket } from 'socket.io-client';
 import { BASE_PATH, BASE_URL } from '@/api/baseUrl';
 import { applyJobEvent, forgetJobs, markRunning } from '@/api/queries/downloads';
-import { keys } from '@/api/queries/keys';
+import { COMBINED_VIEW_ID, keys } from '@/api/queries/keys';
 import type { DownloadJob, ServerEvents } from '@/api/types';
 import { useAuthStore } from '@/stores/auth';
 import { useDownloadsStore } from '@/stores/downloads';
@@ -37,6 +37,7 @@ export function connectSocket(qc: QueryClient): Socket<Listeners> {
       downloads.onJob(payload.job);
       if (name === 'download_completed' && payload.job.root_id) {
         qc.invalidateQueries({ queryKey: keys.entries(payload.job.root_id) });
+        qc.invalidateQueries({ queryKey: keys.entries(COMBINED_VIEW_ID) });
       }
     });
   }
@@ -50,6 +51,7 @@ export function connectSocket(qc: QueryClient): Socket<Listeners> {
   });
   socket.on('library_changed', (p) => {
     qc.invalidateQueries({ queryKey: keys.entries(p.root_id) });
+    qc.invalidateQueries({ queryKey: keys.entries(COMBINED_VIEW_ID) });
     qc.invalidateQueries({ queryKey: keys.tree(p.root_id) });
   });
   socket.on('import_progress', (p) => uploads.onServerProgress(p.root_id, p.rel_path, p.bytes_done, p.done));

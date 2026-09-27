@@ -7,7 +7,7 @@ import type { DownloadJob } from '@/api/types';
 import { formatBytes, formatEta } from '@/format';
 import { useI18n } from '@/i18n';
 import { useDownloadsStore } from '@/stores/downloads';
-import { AppIcon, IconButton, ProgressBar, icons, useSnackbar } from '@/ui';
+import { AppIcon, IconButton, PathText, ProgressBar, icons, useSnackbar } from '@/ui';
 
 const props = defineProps<{ job: DownloadJob }>();
 const { t } = useI18n();
@@ -71,7 +71,7 @@ function run(kind: 'pause' | 'resume' | 'cancel' | 'restart') {
       <ProgressBar v-if="job.state === 'running' || job.state === 'paused' || job.state === 'queued'" :value="job.state === 'queued' ? 0 : fraction" class="bar" />
       <p v-if="job.error" class="type-body-small error">{{ job.error }}</p>
       <p v-if="!job.can_pause && job.state === 'running'" class="type-body-small muted">{{ t('hubs.noPause') }}</p>
-      <p v-if="job.final_path && job.state === 'completed'" class="type-body-small muted path" :title="job.final_path">{{ job.final_path }}</p>
+      <PathText v-if="job.final_path && job.state === 'completed'" :path="job.final_path" class="type-body-small muted" />
     </div>
     <div class="actions">
       <IconButton v-if="job.state === 'running' && job.can_pause" :icon="icons.Pause" :label="t('downloads.pause')" @click="run('pause')" />
@@ -91,9 +91,8 @@ function run(kind: 'pause' | 'resume' | 'cancel' | 'restart') {
 .failed .state-icon { background: var(--md-sys-color-error-container); color: var(--md-sys-color-on-error-container); }
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--app-space-1); }
 .title { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sub, .error, .path { margin: 0; }
+.sub, .error { margin: 0; }
 .error { color: var(--md-sys-color-error); overflow-wrap: anywhere; }
-.path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
 .bar { margin-top: var(--app-space-1); }
 .actions { display: flex; align-items: flex-start; }
 </style>

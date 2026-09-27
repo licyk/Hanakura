@@ -11,6 +11,7 @@ from starlette.requests import ClientDisconnect
 from sd_model_hub.api.deps import ServicesDep
 from sd_model_hub.api.errors import ERROR_RESPONSES
 from sd_model_hub.core.library.models import (
+    CombinedListing,
     DeleteRequest,
     FolderCreate,
     FolderListing,
@@ -68,6 +69,12 @@ def remove_root(services: ServicesDep, root_id: str) -> None:
     services.library.remove_root(root_id)
 
 
+@router.get("/combined/entries", operation_id="list_combined_entries")
+def list_combined_entries(services: ServicesDep) -> CombinedListing:
+    """The top level of every root side by side, as folders; library.combined_view only decides whether the interface offers it."""
+    return services.library.list_combined()
+
+
 @router.get("/roots/{root_id}/entries", operation_id="list_entries")
 def list_entries(services: ServicesDep, root_id: str, path: str = "", kind: str | None = None) -> FolderListing:
     # Only cached detections are returned; the rest are filled by a background scan that publishes library_changed.
@@ -96,6 +103,18 @@ def get_preview(services: ServicesDep, root_id: str, path: str, size: int = Quer
         return FileResponse(source, headers={"Cache-Control": "private, max-age=60"})
     cached, media_type = thumbnail(source, services.settings.data_dir / "thumbnails", size)
     return FileResponse(cached, media_type=media_type, headers={"Cache-Control": "private, max-age=60"})
+
+
+@router.get(
+    "/roots/{root_id}/file",
+    operation_id="download_file",
+    response_class=FileResponse,
+    responses={200: {"content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}}}},
+)
+def download_file(services: ServicesDep, root_id: str, path: str) -> FileResponse:
+    """Send one file as an attachment, so a browser saves it with its own download manager."""
+    target = services.library.export_file(root_id, path)
+    return FileResponse(target, media_type="application/octet-stream", filename=target.name, headers={"Cache-Control": "private, no-store"})
 
 
 @router.post("/roots/{root_id}/scan", operation_id="scan_root")

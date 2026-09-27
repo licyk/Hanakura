@@ -102,6 +102,21 @@ def test_library_flow(runner, tmp_path):
     assert not (models / "loras" / "y.safetensors").exists()
 
 
+def test_library_list_all_roots(runner, tmp_path):
+    from sd_model_hub.core.errors import ValidationError
+
+    app = get_app()
+    for name in ("a", "b"):
+        (tmp_path / name / "loras").mkdir(parents=True)
+        assert runner.invoke(app, ["library", "root", "add", str(tmp_path / name), "--name", name]).exit_code == 0
+    result = runner.invoke(app, ["library", "list", "--all-roots", "--json"])
+    assert result.exit_code == 0, result.output
+    assert sorted(f["label"] for f in json.loads(result.output)["folders"]) == ["loras (a)", "loras (b)"]
+    assert "loras (a)" in runner.invoke(app, ["library", "list", "--all-roots"]).output
+    refused = runner.invoke(app, ["library", "list", "--all-roots", "--recursive"])
+    assert isinstance(refused.exception, ValidationError) and refused.exception.exit_code == 4
+
+
 def test_path_outside_roots_is_not_found(runner, tmp_path):
     from sd_model_hub.core.errors import NotFoundError
 

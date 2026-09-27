@@ -5,6 +5,7 @@ import os
 import threading
 import time
 import uuid
+from collections import Counter
 from collections.abc import Iterator
 from datetime import datetime, timezone
 from pathlib import Path
@@ -19,6 +20,9 @@ from sd_model_hub.core.library import sidecar
 from sd_model_hub.core.library.fsops import copy_path, move_path, remove_path, rename_no_overwrite
 from sd_model_hub.core.library.layouts import LAYOUTS, default_folder, folder_kind
 from sd_model_hub.core.library.models import (
+    COMBINED_VIEW_ID,
+    CombinedFolder,
+    CombinedListing,
     DeleteRequest,
     FolderCreate,
     FolderEntry,
@@ -139,6 +143,8 @@ class LibraryService:
 
     def add_root(self, req: RootCreate, *, root_id: str | None = None) -> RootInfo:
         self._check_roots_unlocked()
+        if root_id == COMBINED_VIEW_ID:
+            raise ValidationError(f"{COMBINED_VIEW_ID!r} is reserved for the combined view and cannot be a root id")
         path = Path(req.path).expanduser()
         if not path.is_absolute():
             raise InvalidPathError("A root path must be absolute")
@@ -356,9 +362,91 @@ class LibraryService:
             return detected == kind
         return (entry.sidecar.kind if entry.sidecar else None) == kind or entry.folder_kind == kind or (kind == "unknown" and not entry.folder_kind)
 
+    def list_combined(self) -> CombinedListing:
+        """Every root's top level side by side, as folders only, for the interface's "All folders".
+
+        A root with files at its top level stays one folder, named after its own directory, so its
+        files are not scattered among everyone else's; a root that holds only folders lends them.
+        Roots without a kind hint come first, as in the root list. A root inside another root is
+        left out, since the outer one already reaches it, and a directory reached twice through a
+        link is listed once. Folders sharing a name are told apart by the name of their root.
+        """
+        ordered = [r for r in self._roots() if not r.kind] + [r for r in self._roots() if r.kind]
+        present: list[tuple[ModelRoot, Path]] = []
+        missing: list[str] = []
+        for r in ordered:
+            path = Path(r.path).expanduser().resolve()
+            if path.is_dir():
+                present.append((r, path))
+            else:
+                missing.append(r.id)
+        shown = [(r, path) for i, (r, path) in enumerate(present) if path not in (p for _, p in present[:i]) and not any(self._reaches(p, path) for _, p in present)]
+
+        # Two roots may share a name; the second becomes "name 2" wherever it has to be named.
+        names_seen: Counter[str] = Counter()
+        root_names: dict[str, str] = {}
+        for r, _ in shown:
+            names_seen[r.name] += 1
+            root_names[r.id] = r.name if names_seen[r.name] == 1 else f"{r.name} {names_seen[r.name]}"
+
+        lib = self.settings.settings.library
+        # (name, rel path, folder kind, root id, real path, is the root itself)
+        entries: list[tuple[str, str, str | None, str, Path, bool]] = []
+        for r, path in shown:
+            try:
+                scanned = scan_dir(path, lib.model_extensions, lib.preview_extensions, include_other_files=lib.show_all_files)
+            except OSError:
+                missing.append(r.id)
+                continue
+            # "Files" are what the root's own listing would show at its top: models, a diffusers
+            # folder, and with show_all_files any other file.
+            if any(self._link_allowed(path, m.path) for m in scanned.models):
+                entries.append((path.name or str(path), "", self._folder_kind(r, ""), r.id, path, True))
+                continue
+            for folder in scanned.folders:
+                if self._link_allowed(path, folder):
+                    rel = to_rel(path, folder)
+                    entries.append((folder.name, rel, self._folder_kind(r, rel), r.id, folder, False))
+
+        # What is reached twice is kept where it really is: a root first, then the folders that
+        # are not links, and a link only when nothing else leads there.
+        claimed = {key for _, path in shown if (key := self._dir_id(path)) is not None}
+        kept: list[tuple[str, str, str | None, str, bool]] = []
+        for name, rel, fkind, root_id, path, is_root in sorted(entries, key=lambda e: (not e[5], e[4].is_symlink())):
+            if not is_root:
+                key = self._dir_id(path)
+                if key is not None:
+                    if key in claimed:
+                        continue
+                    claimed.add(key)
+            kept.append((name, rel, fkind, root_id, is_root))
+
+        # Case-insensitive, as a Windows user would read two names.
+        counts = Counter(name.casefold() for name, *_ in kept)
+        folders = [
+            CombinedFolder(
+                name=name,
+                path=rel,
+                folder_kind=fkind,
+                root_id=root_id,
+                root_name=root_names[root_id],
+                label=name if counts[name.casefold()] == 1 else f"{name} ({root_names[root_id]})",
+                is_root=is_root,
+            )
+            for name, rel, fkind, root_id, is_root in kept
+        ]
+        return CombinedListing(folders=sorted(folders, key=lambda f: f.label.casefold()), missing_roots=missing)
+
+    @staticmethod
+    def _reaches(outer: Path, inner: Path) -> bool:
+        """Whether browsing ``outer`` leads to ``inner``: it lies below, and not inside a hidden folder."""
+        if outer == inner or outer not in inner.parents:
+            return False
+        return not any(is_ignored(part) for part in inner.relative_to(outer).parts)
+
     @staticmethod
     def _dir_id(path: Path) -> tuple[int, int] | None:
-        """Identity of the real directory, so a symlink loop is walked only once."""
+        """Identity of the real file or directory, so a symlink loop is walked only once."""
         try:
             st = path.stat()
         except OSError:
@@ -444,6 +532,15 @@ class LibraryService:
         _, _, target = self._resolve(root_id, rel_path)
         if not target.is_file() or target.suffix.lower() not in self.settings.settings.library.preview_extensions:
             raise NotFoundError(f"Not a preview image: {rel_path}")
+        return target
+
+    def export_file(self, root_id: str, rel_path: str) -> Path:
+        """The file a browser download serves: a regular file inside the root, never one still being written."""
+        _, root_path, target = self._resolve(root_id, rel_path)
+        if target == root_path or not target.is_file():
+            raise InvalidPathError(f"Not a file: {rel_path}")
+        if is_ignored(target.name):
+            raise NotFoundError(f"Not found: {rel_path}")
         return target
 
     # -- detection scans ----------------------------------------------------

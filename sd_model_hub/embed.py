@@ -7,6 +7,7 @@
         settings_path="./my-app/model-hub.toml",                # put the settings file where you like
         model_roots=[ModelRoot("/srv/models", layout="comfyui", name="Models")],
         lock_model_roots=True,                                  # the user cannot change them
+        combined_view=True,                                     # Library opens on "All folders"
         port=0,                                                 # 0: any free port
         api_prefix="/model-hub",                                # keeps our routes out of yours
     )
@@ -29,6 +30,8 @@ from types import TracebackType
 from typing import Any, Literal
 
 from sd_model_hub.core.context import Services, build_services
+from sd_model_hub.core.errors import ValidationError
+from sd_model_hub.core.library.models import COMBINED_VIEW_ID
 from sd_model_hub.core.net.ports import PortUnavailableError, bind_first_free_port, is_loopback
 from sd_model_hub.core.settings.models import LayoutName
 
@@ -55,6 +58,8 @@ class ModelRoot:
     kind: str | None = None
 
     def to_settings(self) -> dict[str, Any]:
+        if self.id == COMBINED_VIEW_ID:
+            raise ValidationError(f"{COMBINED_VIEW_ID!r} is reserved for the combined view and cannot be a root id")
         path = Path(self.path).expanduser().resolve()
         return {
             "id": self.id or f"host-{hashlib.sha256(str(path).encode()).hexdigest()[:16]}",
@@ -75,6 +80,7 @@ class ModelHubServer:
         settings_path: str | Path | None = None,
         model_roots: Iterable[ModelRoot | str | Path] | None = None,
         lock_model_roots: bool = False,
+        combined_view: bool | None = None,
         host: str | None = None,
         port: int | None = None,
         strict_port: bool = False,
@@ -93,6 +99,10 @@ class ModelHubServer:
         ``model_roots`` are folders of models, each with its own layout. With
         ``lock_model_roots`` they are fixed: the API refuses to add, change or remove a folder
         and the interface hides those actions.
+
+        ``combined_view`` pins the Library's "All folders" entry, which lists the top level of
+        every model folder side by side: ``True`` offers it first, ``False`` hides it, and
+        ``None`` leaves the choice to the user (it is off by default).
 
         ``port`` is ``0`` for any free port, a number to ask for that one (moving up when it is
         taken, unless ``strict_port``), or ``None`` for the port in the settings.
@@ -126,6 +136,8 @@ class ModelHubServer:
         server_overrides["open_browser"] = open_browser
         if server_overrides:
             overrides["server"] = server_overrides
+        if combined_view is not None:
+            overrides["library"] = {**(overrides.get("library") or {}), "combined_view": combined_view}
         # Locked roots are an override, so they cannot be edited or lost; unlocked ones are a
         # starting point the user may add to, so they are saved normally at start-up.
         if model_roots is not None and lock_model_roots:

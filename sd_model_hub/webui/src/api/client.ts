@@ -56,6 +56,26 @@ export function previewUrl(rootId: string, path: string, size = 384): string {
   return `${BASE_URL}/api/v1/library/roots/${encodeURIComponent(rootId)}/preview?${q}`;
 }
 
+/** URL of a library file served as an attachment. Like a preview, the token cookie authenticates it. */
+export function fileUrl(rootId: string, path: string): string {
+  const q = new URLSearchParams({ path });
+  return `${BASE_URL}/api/v1/library/roots/${encodeURIComponent(rootId)}/file?${q}`;
+}
+
+/**
+ * Save a library file through the browser's own download manager. A link is followed rather than
+ * the file fetched, because a model runs to gigabytes and a Blob would hold all of it in memory.
+ */
+export function saveFile(rootId: string, path: string): void {
+  const link = document.createElement('a');
+  link.href = fileUrl(rootId, path);
+  link.download = path.split('/').pop() ?? '';
+  link.rel = 'noopener';
+  document.body.append(link);
+  link.click();
+  link.remove();
+}
+
 /**
  * Upload one file with the raw request body, reporting progress. fetch() cannot report upload
  * progress, so this uses XMLHttpRequest.

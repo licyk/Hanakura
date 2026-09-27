@@ -26,6 +26,7 @@ export { default as NavigationBar } from '@/ui/NavigationBar.vue';
 export { default as NavigationRail } from '@/ui/NavigationRail.vue';
 export type { NavItem } from '@/ui/NavigationRail.vue';
 export { default as PathField } from '@/ui/PathField.vue';
+export { default as PathText } from '@/ui/PathText.vue';
 export { default as ProgressBar } from '@/ui/ProgressBar.vue';
 export { default as ProgressCircle } from '@/ui/ProgressCircle.vue';
 export { default as SearchField } from '@/ui/SearchField.vue';

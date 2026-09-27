@@ -137,6 +137,43 @@ def test_access_token(services, client):
     assert client.get("/api/v1/settings", headers={"authorization": "Bearer wrong"}).status_code == 401
 
 
+def test_combined_entries(client, root, tmp_path):
+    root_id, _ = root
+    other = tmp_path / "other"
+    (other / "loras").mkdir(parents=True)
+    r = client.post("/api/v1/library/roots", json={"path": str(other), "name": "other"}, headers={"origin": "http://localhost"})
+    listing = client.get("/api/v1/library/combined/entries").json()
+    assert sorted((f["label"], f["root_id"]) for f in listing["folders"]) == [("loras (models)", root_id), ("loras (other)", r.json()["id"])]
+    assert listing["missing_roots"] == []
+
+
+def test_download_file_is_an_attachment(client, root):
+    root_id, d = root
+    data = b"\x00weights" * 1000
+    (d / "loras" / "模型 a.safetensors").write_bytes(data)
+    r = client.get(f"/api/v1/library/roots/{root_id}/file", params={"path": "loras/模型 a.safetensors"})
+    assert r.status_code == 200 and r.content == data
+    assert r.headers["content-type"] == "application/octet-stream"
+    # The name survives as UTF-8, and the browser is told to save rather than show it.
+    assert r.headers["content-disposition"].startswith("attachment;")
+    assert "filename*=utf-8''%E6%A8%A1%E5%9E%8B%20a.safetensors" in r.headers["content-disposition"]
+    assert r.headers["cache-control"] == "private, no-store"
+    partial = client.get(f"/api/v1/library/roots/{root_id}/file", params={"path": "loras/模型 a.safetensors"}, headers={"range": "bytes=1-7"})
+    assert partial.status_code == 206 and partial.content == b"weights"
+    assert client.get(f"/api/v1/library/roots/{root_id}/file", params={"path": "loras"}).status_code == 400
+    assert client.get(f"/api/v1/library/roots/{root_id}/file", params={"path": "../../etc/passwd"}).status_code == 400
+
+
+def test_download_file_needs_the_access_token(services, client, root):
+    root_id, d = root
+    (d / "loras" / "m.safetensors").write_bytes(b"x")
+    services.settings.update({"server": {"access_token": "tok"}})
+    url = f"/api/v1/library/roots/{root_id}/file"
+    assert client.get(url, params={"path": "loras/m.safetensors"}).status_code == 401
+    # A browser download is a navigation: it carries the cookie, not a bearer header.
+    assert client.get(url, params={"path": "loras/m.safetensors"}, cookies={"sd_model_hub_token": "tok"}).status_code == 200
+
+
 def test_openapi_has_events(client):
     schema = client.get("/openapi.json").json()
     assert "download_progress" in schema["components"]["schemas"]["ServerEvents"]["properties"]

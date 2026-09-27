@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useQueryClient } from '@tanstack/vue-query';
 import { computed, ref, watch } from 'vue';
-import { previewUrl } from '@/api/client';
+import { previewUrl, saveFile } from '@/api/client';
 import { useMeta } from '@/api/queries/app';
 import { keys } from '@/api/queries/keys';
 import { fetchModelHash, useModelInfo } from '@/api/queries/library';
@@ -108,9 +108,10 @@ const rows = computed(() => {
             <template v-else>—</template>
           </dd>
         </dl>
-        <!-- No source knows a plain file, so asking one about it only wastes a hash. -->
-        <div v-if="!entry.is_dir && entry.is_model" class="actions">
-          <AppButton variant="tonal" :icon="icons.Fingerprint" :loading="hashing || identify.isPending.value" @click="lookup">{{ t('library.identify') }}</AppButton>
+        <div v-if="!entry.is_dir" class="actions">
+          <!-- No source knows a plain file, so asking one about it only wastes a hash. -->
+          <AppButton v-if="entry.is_model" variant="tonal" :icon="icons.Fingerprint" :loading="hashing || identify.isPending.value" @click="lookup">{{ t('library.identify') }}</AppButton>
+          <AppButton variant="text" :icon="icons.Download" @click="rootId && saveFile(rootId, entry.path)">{{ t('library.download') }}</AppButton>
         </div>
         <div v-if="results" class="results">
           <p v-if="!results.length" class="type-body-medium muted">{{ t('library.identifyNone') }}</p>
@@ -178,7 +179,7 @@ const rows = computed(() => {
 dt { overflow-wrap: anywhere; }
 dd { margin: 0; overflow-wrap: anywhere; }
 .mono { font-family: ui-monospace, monospace; font-size: var(--md-sys-typescale-body-small-size); }
-.actions { display: flex; gap: var(--app-space-2); }
+.actions { display: flex; flex-wrap: wrap; gap: var(--app-space-2); }
 .results { display: flex; flex-direction: column; gap: var(--app-space-2); }
 .result { display: flex; flex-wrap: wrap; align-items: center; gap: var(--app-space-2); padding: var(--app-space-2) var(--app-space-3); border-radius: var(--md-sys-shape-corner-medium); background: var(--md-sys-color-surface-container); color: inherit; text-decoration: none; }
 .result > span { min-width: 0; overflow-wrap: anywhere; }

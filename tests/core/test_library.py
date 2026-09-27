@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from sd_model_hub.core.errors import ConflictError, InvalidPathError, NotFoundError
+from sd_model_hub.core.errors import ConflictError, InvalidPathError, NotFoundError, ValidationError
 from sd_model_hub.core.events.models import LibraryChangedEvent
 from sd_model_hub.core.library.layouts import default_folder, folder_kind
-from sd_model_hub.core.library.models import DeleteRequest, FolderCreate, ImportRequest, MoveRequest, PathRef, RenameRequest, RootCreate
+from sd_model_hub.core.library.models import COMBINED_VIEW_ID, DeleteRequest, FolderCreate, ImportRequest, MoveRequest, PathRef, RenameRequest, RootCreate
 from sd_model_hub.core.library.safety import resolve_in_root, validate_name
 from tests.conftest import LORA_SD1, LORA_SDXL, write_safetensors
 
@@ -345,3 +345,152 @@ def test_upload_writer(services, root_dir, root):
     aborted.write(b"1")
     aborted.abort()
     assert not (root_dir / "loras" / "x.bin.part").exists() and not (root_dir / "loras" / "x.bin").exists()
+
+
+# -- the combined view -------------------------------------------------------------
+
+
+def _add(services, path: Path, name: str, kind: str | None = None, layout: str = "comfyui"):
+    path.mkdir(parents=True, exist_ok=True)
+    return services.library.add_root(RootCreate(name=name, path=str(path), layout=layout, kind=kind))
+
+
+def test_combined_view_is_off_by_default(services):
+    assert services.settings.settings.library.combined_view is False
+
+
+def _shown(combined) -> list[tuple[str, str, str, bool]]:
+    return [(f.label, f.root_id, f.path, f.is_root) for f in combined.folders]
+
+
+def test_combined_spreads_roots_that_hold_only_folders(services, root_dir, root, tmp_path):
+    write_safetensors(root_dir / "loras" / "style" / "deep.safetensors", LORA_SD1)
+    forge = _add(services, tmp_path / "forge", "forge")
+    (tmp_path / "forge" / "embeddings").mkdir()
+
+    combined = services.library.list_combined()
+    assert _shown(combined) == [
+        ("checkpoints", root.id, "checkpoints", False),
+        ("embeddings", forge.id, "embeddings", False),
+        ("loras", root.id, "loras", False),
+        ("vae", root.id, "vae", False),
+    ]
+    assert combined.folders[2].folder_kind == "lora"
+    assert combined.missing_roots == []
+
+
+def test_a_root_with_files_stays_one_folder_named_after_its_directory(services, root_dir, root, tmp_path):
+    """Its files, and its folders, stay inside it rather than scattering among every other root's."""
+    lora = _add(services, tmp_path / "webui" / "models" / "Lora", "loras (2)", kind="lora", layout="custom")
+    write_safetensors(tmp_path / "webui" / "models" / "Lora" / "loose.safetensors", LORA_SD1)
+    (tmp_path / "webui" / "models" / "Lora" / "sdxl").mkdir()
+
+    combined = services.library.list_combined()
+    assert ("Lora", lora.id, "", True) in _shown(combined)
+    assert "sdxl" not in [f.name for f in combined.folders]
+    entry = next(f for f in combined.folders if f.is_root)
+    assert entry.root_name == "loras (2)" and entry.folder_kind == "lora"
+    # The folder-only root beside it is still spread out.
+    assert ("loras", root.id, "loras", False) in _shown(combined)
+
+
+def test_what_counts_as_a_file_follows_what_the_listing_shows(services, root_dir, root):
+    (root_dir / "notes.txt").write_text("x")
+    # A plain file is not listed while show_all_files is off, so there is nothing to scatter.
+    assert not any(f.is_root for f in services.library.list_combined().folders)
+    services.settings.update({"library": {"show_all_files": True}})
+    assert _shown(services.library.list_combined()) == [("models", root.id, "", True)]
+    services.settings.update({"library": {"show_all_files": False}})
+    # A diffusers folder is shown as a model, so it keeps its root together too.
+    (root_dir / "pipe").mkdir()
+    (root_dir / "pipe" / "model_index.json").write_text("{}")
+    assert _shown(services.library.list_combined()) == [("models", root.id, "", True)]
+
+
+def test_combined_tells_equal_names_apart_by_root(services, root_dir, root, tmp_path):
+    second = _add(services, tmp_path / "b" / "models", "comfy")
+    (tmp_path / "b" / "models" / "LORAS").mkdir()
+    # Two whole roots named after the same directory.
+    third = _add(services, tmp_path / "c" / "vae", "vae one")
+    fourth = _add(services, tmp_path / "d" / "vae", "vae two")
+    write_safetensors(tmp_path / "c" / "vae" / "a.safetensors", LORA_SD1)
+    write_safetensors(tmp_path / "d" / "vae" / "b.safetensors", LORA_SD1)
+
+    labels = {(f.root_id, f.name): f.label for f in services.library.list_combined().folders}
+    # Case does not tell names apart for a reader, and two roots with one name are numbered.
+    assert labels[(root.id, "loras")] == "loras (comfy)"
+    assert labels[(second.id, "LORAS")] == "LORAS (comfy 2)"
+    assert labels[(root.id, "vae")] == "vae (comfy)"
+    assert labels[(third.id, "vae")] == "vae (vae one)"
+    assert labels[(fourth.id, "vae")] == "vae (vae two)"
+    assert labels[(root.id, "checkpoints")] == "checkpoints"
+
+
+def test_combined_leaves_out_nested_and_missing_roots(services, root_dir, root, tmp_path):
+    """A root inside another is already reached through it; a missing one is reported, not fatal."""
+    nested = _add(services, root_dir / "loras", "LoRA", kind="lora")
+    write_safetensors(root_dir / "loras" / "x.safetensors", LORA_SD1)
+    gone = _add(services, tmp_path / "gone", "gone")
+    (tmp_path / "gone").rmdir()
+    combined = services.library.list_combined()
+    assert {f.root_id for f in combined.folders} == {root.id}
+    assert nested.id not in {f.root_id for f in combined.folders}
+    assert combined.missing_roots == [gone.id]
+
+
+def test_combined_leads_with_roots_without_a_kind(services, tmp_path):
+    _add(services, tmp_path / "loras", "LoRA", kind="lora", layout="custom")
+    _add(services, tmp_path / "all", "All", layout="custom")
+    write_safetensors(tmp_path / "loras" / "x.safetensors", LORA_SD1)
+    write_safetensors(tmp_path / "all" / "x.safetensors", LORA_SD1)
+    # Sorted by label on screen; both are whole roots named after their directories.
+    assert [(f.label, f.is_root) for f in services.library.list_combined().folders] == [("all", True), ("loras", True)]
+
+
+def test_combined_lists_a_linked_directory_once(services, root_dir, root, tmp_path):
+    other = _add(services, tmp_path / "elsewhere", "elsewhere")
+    (tmp_path / "elsewhere" / "sub").mkdir()
+    # A link inside one root to another root, and a second link to a folder already listed.
+    os.symlink(tmp_path / "elsewhere", root_dir / "to-root")
+    os.symlink(tmp_path / "elsewhere" / "sub", root_dir / "to-sub")
+    combined = services.library.list_combined()
+    assert [(f.root_id, f.name) for f in combined.folders if f.name in ("sub", "to-sub", "to-root")] == [(other.id, "sub")]
+
+
+def test_a_whole_root_is_kept_when_another_root_links_to_it(services, root_dir, root, tmp_path):
+    other = _add(services, tmp_path / "elsewhere", "elsewhere")
+    write_safetensors(tmp_path / "elsewhere" / "m.safetensors", LORA_SD1)
+    os.symlink(tmp_path / "elsewhere", root_dir / "to-root")
+    shown = _shown(services.library.list_combined())
+    assert ("elsewhere", other.id, "", True) in shown
+    assert "to-root" not in [label for label, *_ in shown]
+
+
+def test_combined_view_id_cannot_be_a_root(services, root_dir):
+    with pytest.raises(ValidationError):
+        services.library.add_root(RootCreate(path=str(root_dir)), root_id=COMBINED_VIEW_ID)
+
+
+# -- exporting a file ------------------------------------------------------------
+
+
+def test_export_file_serves_only_finished_files_inside_the_root(services, root_dir, root, tmp_path):
+    path = write_safetensors(root_dir / "loras" / "m.safetensors", LORA_SD1)
+    (root_dir / "loras" / "busy.safetensors.part").write_bytes(b"x")
+    assert services.library.export_file(root.id, "loras/m.safetensors") == path.resolve()
+    with pytest.raises(InvalidPathError):
+        services.library.export_file(root.id, "loras")
+    with pytest.raises(InvalidPathError):
+        services.library.export_file(root.id, "")
+    with pytest.raises(NotFoundError):
+        services.library.export_file(root.id, "loras/busy.safetensors.part")
+    with pytest.raises(NotFoundError):
+        services.library.export_file(root.id, "loras/none.safetensors")
+    with pytest.raises(InvalidPathError):
+        services.library.export_file(root.id, "../outside.txt")
+
+    (tmp_path / "secret.txt").write_text("s")
+    os.symlink(tmp_path / "secret.txt", root_dir / "link.txt")
+    services.settings.update({"library": {"follow_symlinks": False}})
+    with pytest.raises(InvalidPathError):
+        services.library.export_file(root.id, "link.txt")

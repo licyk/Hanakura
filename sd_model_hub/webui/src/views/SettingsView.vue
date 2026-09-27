@@ -37,6 +37,14 @@ function save(patch: Record<string, unknown>, restart = false) {
 const num = (v: string | number | null) => (v === '' || v === null ? null : Number(v));
 const rootOptions = computed(() => [{ value: '', label: '—' }, ...(roots.data.value ?? []).map((r) => ({ value: r.id, label: r.name }))]);
 const envNote = (key: string) => (s.value?.env_overrides.includes(key) ? t('settings.envOverrides') : undefined);
+/** A value the host application pinned would snap back after saving, so its switch is disabled. */
+const isPinned = (dotted: string) => s.value?.pinned.includes(dotted) ?? false;
+const librarySwitches = [
+  { key: 'delete_to_trash', label: 'settings.deleteToTrash', help: 'settings.deleteToTrashHelp' },
+  { key: 'follow_symlinks', label: 'settings.followSymlinks', help: 'settings.followSymlinksHelp' },
+  { key: 'show_all_files', label: 'settings.showAllFiles', help: 'settings.showAllFilesHelp' },
+  { key: 'combined_view', label: 'settings.combinedView', help: 'settings.combinedViewHelp' },
+] as const;
 </script>
 
 <template>
@@ -143,9 +151,15 @@ const envNote = (key: string) => (s.value?.env_overrides.includes(key) ? t('sett
             @update:model-value="save({ content: { nsfw_mode: $event } })"
           />
         </div>
-        <Switch :model-value="s.library.delete_to_trash" :label="t('settings.deleteToTrash')" :supporting-text="t('settings.deleteToTrashHelp')" @update:model-value="save({ library: { delete_to_trash: $event } })" />
-        <Switch :model-value="s.library.follow_symlinks" :label="t('settings.followSymlinks')" :supporting-text="t('settings.followSymlinksHelp')" @update:model-value="save({ library: { follow_symlinks: $event } })" />
-        <Switch :model-value="s.library.show_all_files" :label="t('settings.showAllFiles')" :supporting-text="t('settings.showAllFilesHelp')" @update:model-value="save({ library: { show_all_files: $event } })" />
+        <Switch
+          v-for="sw in librarySwitches"
+          :key="sw.key"
+          :model-value="s.library[sw.key]"
+          :label="t(sw.label)"
+          :supporting-text="isPinned(`library.${sw.key}`) ? t('settings.pinned') : t(sw.help)"
+          :disabled="isPinned(`library.${sw.key}`)"
+          @update:model-value="save({ library: { [sw.key]: $event } })"
+        />
       </Surface>
 
       <Surface :level="0" shape="large" class="section">

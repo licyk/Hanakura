@@ -1,11 +1,11 @@
 import { flushPromises, shallowMount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import { computed, ref } from 'vue';
-import { TRANSITIONS } from '@/ui';
+import { ExpansionPanel, TRANSITIONS } from '@/ui';
 import HubsView from '@/views/HubsView.vue';
 
 // A plain holder, not a ref: vi.hoisted runs before the imports this file makes.
-const repo = vi.hoisted(() => ({ id: null as { value: string | null } | null }));
+const repo = vi.hoisted(() => ({ id: null as { value: string | null } | null, detail: null as Record<string, unknown> | null }));
 vi.mock('@/api/queries/hubs', () => ({
   useHubs: () => ({ data: ref([{ id: 'huggingface', name: 'Hugging Face', sorts: [] }]) }),
   useRepoSearch: () => ({
@@ -19,7 +19,7 @@ vi.mock('@/api/queries/hubs', () => ({
   }),
   useRepo: (_hub: unknown, id: { value: string | null }) => {
     repo.id = id;
-    return { data: computed(() => null), isPending: ref(false), isError: ref(false), error: ref(null) };
+    return { data: computed(() => (id.value ? repo.detail : null)), isPending: ref(false), isError: ref(false), error: ref(null) };
   },
 }));
 vi.mock('@/api/queries/downloads', () => ({ useCreateDownload: () => ({ mutate: vi.fn(), isPending: ref(false) }) }));
@@ -72,5 +72,26 @@ describe('opening a repository', () => {
     await flushPromises();
     expect(repo.id!.value).toBeNull();
     expect(wrapper.find('.repo-pane').exists()).toBe(false);
+  });
+});
+
+describe('the model card', () => {
+  it('opens expanded for every repository, even after it was collapsed for the last one', async () => {
+    repo.detail = { id: 'owner/one', revision: 'main', files: [], description: '# Card', page_url: 'https://example.com', total_size: 0, last_modified: null, license: null };
+    const wrapper = view();
+    await flushPromises();
+    await wrapper.find('.repo-row').trigger('click');
+    await flushPromises();
+    const panel = () => wrapper.findComponent(ExpansionPanel);
+    expect(panel().props('open')).toBe(true);
+
+    panel().vm.$emit('update:open', false);
+    await flushPromises();
+    expect(panel().props('open')).toBe(false);
+
+    await wrapper.findAll('.repo-row')[1].trigger('click');
+    await flushPromises();
+    expect(panel().props('open')).toBe(true);
+    repo.detail = null;
   });
 });

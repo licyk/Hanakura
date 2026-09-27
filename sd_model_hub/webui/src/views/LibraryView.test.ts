@@ -2,10 +2,12 @@ import { flushPromises, shallowMount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { computed, ref, toValue } from 'vue';
 import ModelCard from '@/components/ModelCard.vue';
-import { AppMenu, SelectField, icons } from '@/ui';
+import { AppMenu, PathText, SelectField, icons } from '@/ui';
 import LibraryView from '@/views/LibraryView.vue';
 
-const queries = vi.hoisted(() => ({ entries: vi.fn(), replace: vi.fn() }));
+const queries = vi.hoisted(() => ({ entries: vi.fn(), combined: vi.fn(), replace: vi.fn(), saveFile: vi.fn(), mutations: {} as Record<string, { mutate: ReturnType<typeof vi.fn> }> }));
+const library = vi.hoisted(() => ({ settings: { delete_to_trash: true } as Record<string, unknown> }));
+vi.mock('@/api/client', () => ({ previewUrl: (root: string, path: string) => `preview:${root}:${path}`, saveFile: queries.saveFile }));
 vi.mock('vue-router', () => ({
   useRoute: () => ({ query: {} }),
   useRouter: () => ({ replace: queries.replace }),
@@ -18,16 +20,20 @@ vi.mock('@/api/queries/library', async () => {
   return {
     useRoots: () => ({ data: c(() => roots.list), isSuccess: r(true) }),
     useEntries: queries.entries,
+    useCombinedEntries: queries.combined,
     useTree: () => ({ data: r(null) }),
-    useLibraryMutations: () => Object.fromEntries(
-      ['rename', 'move', 'remove', 'createFolder', 'importPaths', 'addRoot', 'updateRoot', 'removeRoot', 'scan']
-        .map((name) => [name, { isPending: r(false), mutate: vi.fn() }]),
-    ),
+    useLibraryMutations: () => {
+      queries.mutations = Object.fromEntries(
+        ['rename', 'move', 'remove', 'createFolder', 'importPaths', 'addRoot', 'updateRoot', 'removeRoot', 'scan']
+          .map((name) => [name, { isPending: r(false), mutate: vi.fn() }]),
+      );
+      return queries.mutations;
+    },
   };
 });
 vi.mock('@/api/queries/app', () => ({
   useMeta: () => ({ data: ref({ roots_locked: true, kinds: ['lora'], base_models: [] }) }),
-  useSettings: () => ({ data: ref({ library: { delete_to_trash: true } }) }),
+  useSettings: () => ({ data: ref({ library: library.settings }), isError: ref(false) }),
 }));
 vi.mock('@/stores/preferences', () => ({ usePreferencesStore: () => ({ prefs: { lastRoot: null, libraryView: 'grid' } }) }));
 const uploads = vi.hoisted(() => ({ enqueue: vi.fn() }));
@@ -37,6 +43,9 @@ vi.mock('@/i18n', () => ({ useI18n: () => ({ t: (key: string) => key, kindLabel:
 
 beforeEach(() => {
   roots.list = [{ id: 'models', name: 'All models', path: '/models', exists: true }];
+  library.settings = { delete_to_trash: true };
+  queries.combined.mockReturnValue({ data: computed(() => undefined), isPending: ref(false), isError: ref(false) });
+  queries.saveFile.mockReset();
 });
 
 describe('library folder navigation', () => {
@@ -168,6 +177,167 @@ describe('uploading from the file picker', () => {
     menu.vm.$emit('select', 'folder');
     create.mockRestore();
     expect(input.webkitdirectory).toBe(true);
+    wrapper.unmount();
+  });
+});
+
+const model = (name: string, extra: Record<string, unknown> = {}) => ({
+  name,
+  stem: name.replace(/\.[^.]+$/, ''),
+  path: name,
+  is_dir: false,
+  is_model: true,
+  size: 1,
+  companions: [],
+  mismatch: false,
+  detection: null,
+  sidecar: null,
+  preview: null,
+  ...extra,
+});
+
+function mountWithItems() {
+  return shallowMount(LibraryView, {
+    global: {
+      stubs: {
+        FileDropZone: { props: ['disabled'], template: '<div :data-disabled="disabled"><slot /></div>' },
+        ModelGrid: { props: ['items'], template: '<div><slot v-for="item in items" :item="item" /></div>' },
+        // Renders its slots, where the per-model menu lives.
+        ModelCard: {
+          props: ['layout', 'title', 'subtitle', 'preview', 'fallbackIcon', 'kind', 'base', 'warning', 'pending', 'selected'],
+          template: '<div><slot name="select" /><slot name="actions" /></div>',
+        },
+      },
+    },
+  });
+}
+
+describe('all folders', () => {
+  beforeEach(() => {
+    roots.list = [
+      { id: 'comfy', name: 'ComfyUI', path: '/srv/comfy/models', exists: true, kind: null },
+      { id: 'forge', name: 'Forge', path: '/srv/forge', exists: true, kind: null },
+    ];
+    queries.entries.mockReturnValue({ data: computed(() => ({ root_id: 'forge', folders: [], models: [], pending_detection: 0 })), isPending: ref(false), isError: ref(false) });
+    queries.combined.mockReturnValue({
+      data: computed(() => ({
+        folders: [
+          { name: 'loras', path: 'loras', folder_kind: 'lora', root_id: 'comfy', root_name: 'ComfyUI', label: 'loras (ComfyUI)', is_root: false },
+          { name: 'loras', path: 'models/Lora', folder_kind: 'lora', root_id: 'forge', root_name: 'Forge', label: 'loras (Forge)', is_root: false },
+          // A root with files at its top level, kept whole under its directory's name.
+          { name: 'Lora', path: '', folder_kind: 'lora', root_id: 'webui-lora', root_name: 'loras (2)', label: 'Lora', is_root: true },
+        ],
+        missing_roots: [],
+      })),
+      isPending: ref(false),
+      isError: ref(false),
+    });
+  });
+
+  it('is not offered while the setting is off', async () => {
+    const wrapper = mountWithItems();
+    await flushPromises();
+    const root = wrapper.findAllComponents(SelectField).find((field) => field.props('label') === 'library.root')!;
+    expect(root.props('options').map((o: { value: string }) => o.value)).toEqual(['comfy', 'forge']);
+    expect(root.props('modelValue')).toBe('comfy');
+    expect(toValue(queries.combined.mock.calls.at(-1)![0])).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('leads the root list when on, opens first, and lists every root side by side', async () => {
+    library.settings = { delete_to_trash: true, combined_view: true };
+    const wrapper = mountWithItems();
+    await flushPromises();
+    const root = wrapper.findAllComponents(SelectField).find((field) => field.props('label') === 'library.root')!;
+    expect(root.props('options').map((o: { value: string }) => o.value)).toEqual(['*', 'comfy', 'forge']);
+    expect(root.props('modelValue')).toBe('*');
+    expect(toValue(queries.combined.mock.calls.at(-1)![0])).toBe(true);
+    // The per-root listing is not asked for a root called "*".
+    expect(toValue(queries.entries.mock.calls.at(-1)![0])).toBe(null);
+
+    const folders = wrapper.findAll('button.folder');
+    expect(folders.map((b) => b.find('.folder-name').text())).toEqual(['loras (ComfyUI)', 'loras (Forge)', 'Lora']);
+    expect(folders[2].find('.folder-meta').text()).toContain('loras (2)');
+    // Folders only: no file is ever loose in "All folders", and the kind filter has nothing to filter.
+    expect(wrapper.findComponent(ModelCard).exists()).toBe(false);
+    expect(wrapper.findAllComponents(SelectField).some((field) => field.props('label') === 'library.filterKind')).toBe(false);
+    // Nothing can be created or dropped where there is no single folder to put it in.
+    expect(wrapper.find('[data-disabled="true"]').exists()).toBe(true);
+    expect(wrapper.findAllComponents(AppMenu).some((c) => (c.props('items') as { id: string }[]).some((i) => i.id === 'files'))).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('opens a folder in its own root and acts on items with their own root', async () => {
+    library.settings = { delete_to_trash: true, combined_view: true };
+    const wrapper = mountWithItems();
+    await flushPromises();
+
+    const folders = wrapper.findAll('button.folder');
+    // A whole root has no rename, move or delete; a folder inside one does, against its own root.
+    expect(folders[2].findComponent(AppMenu).exists()).toBe(false);
+    folders[1].findComponent(AppMenu).vm.$emit('select', 'delete');
+    await flushPromises();
+    const confirm = wrapper.findAllComponents({ name: 'ConfirmDialog' }).find((c) => c.props('title') === 'library.deleteTitle')!;
+    confirm.vm.$emit('confirm');
+    expect(queries.mutations.remove.mutate.mock.calls[0][0]).toEqual({ items: [{ root_id: 'forge', path: 'models/Lora' }], permanent: false });
+
+    await folders[1].trigger('click');
+    await flushPromises();
+    expect(queries.replace).toHaveBeenLastCalledWith({ query: { root: 'forge', path: 'models/Lora' } });
+    wrapper.unmount();
+  });
+
+  it('opens a whole root at its top', async () => {
+    library.settings = { delete_to_trash: true, combined_view: true };
+    roots.list = [...roots.list, { id: 'webui-lora', name: 'loras (2)', path: '/srv/webui/models/Lora', exists: true, kind: 'lora' }];
+    const wrapper = mountWithItems();
+    await flushPromises();
+    await wrapper.findAll('button.folder')[2].trigger('click');
+    await flushPromises();
+    expect(queries.replace).toHaveBeenLastCalledWith({ query: { root: 'webui-lora', path: undefined } });
+    wrapper.unmount();
+  });
+
+  it('keeps a way back from inside a root', async () => {
+    library.settings = { delete_to_trash: true, combined_view: true };
+    queries.replace.mockReset();
+    const wrapper = mountWithItems();
+    await flushPromises();
+    await wrapper.findAll('button.folder')[0].trigger('click');
+    await flushPromises();
+    const crumbs = wrapper.findComponent({ name: 'Breadcrumbs' });
+    expect(crumbs.props('crumbs').map((c: { label: string }) => c.label)).toEqual(['library.allFolders', 'ComfyUI', 'loras']);
+    crumbs.vm.$emit('navigate', crumbs.props('crumbs')[0].value);
+    await flushPromises();
+    expect(queries.replace).toHaveBeenLastCalledWith({ query: { root: '*', path: undefined } });
+    wrapper.unmount();
+  });
+});
+
+describe('downloading a file', () => {
+  it('offers a file for download through the browser, and not a diffusers folder', async () => {
+    queries.entries.mockReturnValue({
+      data: computed(() => ({ folders: [], models: [model('a.safetensors'), model('pipe', { is_dir: true })], pending_detection: 0 })),
+      isPending: ref(false),
+      isError: ref(false),
+    });
+    const wrapper = mountWithItems();
+    await flushPromises();
+    const menus = wrapper.findAllComponents(AppMenu).filter((c) => (c.props('items') as { id: string }[]).some((i) => i.id === 'info'));
+    expect(menus.map((c) => (c.props('items') as { id: string }[]).some((i) => i.id === 'download'))).toEqual([true, false]);
+    menus[0].vm.$emit('select', 'download');
+    expect(queries.saveFile).toHaveBeenCalledWith('models', 'a.safetensors');
+    wrapper.unmount();
+  });
+});
+
+describe('the root path', () => {
+  it('keeps its leading slash on screen', async () => {
+    roots.list = [{ id: 'models', name: 'All models', path: '/root/model', exists: true }];
+    queries.entries.mockReturnValue({ data: computed(() => ({ folders: [], models: [], pending_detection: 0 })), isPending: ref(false), isError: ref(false) });
+    const wrapper = mountWithItems();
+    await flushPromises();
+    expect(wrapper.findComponent(PathText).props('path')).toBe('/root/model');
     wrapper.unmount();
   });
 });
