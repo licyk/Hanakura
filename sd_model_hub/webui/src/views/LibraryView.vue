@@ -36,8 +36,10 @@ import {
   SelectField,
   Skeleton,
   TextField,
+  collapseHooks,
   icons,
   type MenuItem,
+  useMediaQuery,
   useSnackbar,
 } from '@/ui';
 import { useViewQuery } from '@/viewState';
@@ -59,6 +61,18 @@ const rootId = ref<string | null>(str(route.query.root) ?? prefs.prefs.lastRoot)
 const path = ref(str(route.query.path) ?? '');
 const kind = ref<string | null>(null);
 const direction = ref(1);
+
+/**
+ * Too narrow for the folders beside the contents — a phone, a tablet held upright — the folder
+ * panel would sit above them and leave the contents a sliver. There it starts closed, a button
+ * opens it, and picking a folder closes it again.
+ */
+const stacked = useMediaQuery('(max-width: 839px)');
+const sideOpen = ref(false);
+const sideShown = computed(() => !stacked.value || sideOpen.value);
+watch(stacked, (value) => {
+  if (value) sideOpen.value = false;
+});
 
 /**
  * A root with no kind hint holds a whole model directory; one with a hint is dedicated to a
@@ -181,6 +195,7 @@ const sideTree = computed<TreeNode | null>(() => {
   return { name: t('library.allFolders'), path: '', folder_kind: null, children: folders.map((i) => ({ name: i.label, path: itemKey(i), folder_kind: i.folder.folder_kind ?? null, children: [] })) };
 });
 function onTreeSelect(key: string) {
+  if (stacked.value) sideOpen.value = false;
   if (!isCombined.value) return navigate(key);
   const item = items.value.find((i) => itemKey(i) === key);
   if (item?.type === 'folder') openFolder(item);
@@ -444,7 +459,7 @@ const kindFor = (model: ModelEntry) => {
 </script>
 
 <template>
-  <div class="library">
+  <div class="library" :class="{ stacked }">
     <EmptyState
       v-if="roots.isSuccess.value && !roots.data.value?.length"
       :icon="icons.HardDrive"
@@ -456,6 +471,8 @@ const kindFor = (model: ModelEntry) => {
     </EmptyState>
 
     <template v-else>
+      <Transition name="collapse" v-bind="collapseHooks">
+      <div v-show="sideShown" class="side-wrap">
       <aside class="side">
         <div class="root-row">
           <SelectField v-model="rootId" :label="t('library.root')" :options="rootOptions" class="root-select" @update:model-value="path = ''" />
@@ -472,11 +489,24 @@ const kindFor = (model: ModelEntry) => {
           <div v-else class="tree-skeleton"><Skeleton v-for="i in 6" :key="i" height="28px" shape="full" /></div>
         </div>
       </aside>
+      </div>
+      </Transition>
 
       <section class="main">
         <FileDropZone :label="t('library.dropHere', { folder: path || root?.name || '/' })" :disabled="!canAdd" @files="startUpload">
           <div class="head">
-            <Breadcrumbs :crumbs="crumbs" @navigate="onCrumb" />
+            <div class="crumb-row">
+              <IconButton
+                v-if="stacked"
+                :icon="sideOpen ? icons.PanelTopClose : icons.FolderTree"
+                :label="sideOpen ? t('library.hideFolders') : t('library.showFolders')"
+                :tonal="sideOpen"
+                :expanded="sideOpen"
+                class="side-toggle"
+                @click="sideOpen = !sideOpen"
+              />
+              <Breadcrumbs :crumbs="crumbs" @navigate="onCrumb" />
+            </div>
             <div class="toolbar">
               <template v-if="selection.size">
                 <span class="type-label-large">{{ t('library.selected', { n: selection.size }) }}</span>
@@ -617,7 +647,9 @@ const kindFor = (model: ModelEntry) => {
 /* The folder side widens with the window, so long folder names fit on a wide screen. */
 .library { display: grid; grid-template-columns: clamp(280px, 20vw, 480px) minmax(0, 1fr); height: 100%; }
 .no-roots { grid-column: 1 / -1; align-self: center; }
-.side { display: flex; flex-direction: column; gap: var(--app-space-2); padding: var(--app-space-4); border-right: 1px solid var(--md-sys-color-outline-variant); min-height: 0; }
+.side-wrap { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--md-sys-color-outline-variant); }
+/* The padding lives inside the wrapper, whose height the collapse transition animates. */
+.side { flex: 1; display: flex; flex-direction: column; gap: var(--app-space-2); padding: var(--app-space-4); min-height: 0; }
 .root-row { display: flex; align-items: center; gap: var(--app-space-1); }
 .root-select { flex: 1; min-width: 0; }
 .hint { margin: 0; }
@@ -625,6 +657,8 @@ const kindFor = (model: ModelEntry) => {
 .tree { flex: 1; overflow: auto; margin: 0 calc(-1 * var(--app-space-2)); }
 .tree-skeleton { display: flex; flex-direction: column; gap: var(--app-space-2); padding: var(--app-space-2); }
 .main { min-width: 0; overflow: auto; }
+.crumb-row { display: flex; align-items: center; gap: var(--app-space-1); min-width: 0; }
+.side-toggle { flex: none; }
 .head { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--app-space-2); padding: var(--app-space-3) var(--app-space-4); background: var(--md-sys-color-surface-container-low); }
 .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--app-space-2); }
 .kind { min-width: 150px; }
@@ -642,9 +676,9 @@ const kindFor = (model: ModelEntry) => {
 .folder-name, .folder-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .select-box { padding: 2px; border-radius: var(--md-sys-shape-corner-small); background: color-mix(in srgb, var(--md-sys-color-surface) 70%, transparent); }
 .form { display: flex; flex-direction: column; gap: var(--app-space-3); }
-@media (max-width: 839px) {
-  .library { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; }
-  .side { border-right: 0; border-bottom: 1px solid var(--md-sys-color-outline-variant); }
-  .tree { max-height: 160px; }
-}
+/* Folders above the contents, and only while opened. */
+.stacked { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+.stacked .side-wrap { grid-row: 1; border-right: 0; border-bottom: 1px solid var(--md-sys-color-outline-variant); }
+.stacked .main { grid-row: 2; }
+.stacked .tree { max-height: 40vh; }
 </style>

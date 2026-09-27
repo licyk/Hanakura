@@ -45,4 +45,5 @@ export { default as Tooltip } from '@/ui/Tooltip.vue';
 export { default as TopAppBar } from '@/ui/TopAppBar.vue';
 export * as icons from '@/ui/icons';
 export { collapseHooks, staggerStyle, TRANSITIONS } from '@/ui/motion/transitions';
+export { useMediaQuery } from '@/ui/useMediaQuery';
 export { useSnackbar } from '@/ui/useSnackbar';

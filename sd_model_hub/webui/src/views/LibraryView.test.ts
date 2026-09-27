@@ -1,8 +1,9 @@
 import { flushPromises, shallowMount } from '@vue/test-utils';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { computed, ref, toValue } from 'vue';
+import FolderTree from '@/components/FolderTree.vue';
 import ModelCard from '@/components/ModelCard.vue';
-import { AppMenu, PathText, SelectField, icons } from '@/ui';
+import { AppMenu, IconButton, PathText, SelectField, icons } from '@/ui';
 import LibraryView from '@/views/LibraryView.vue';
 
 const queries = vi.hoisted(() => ({ entries: vi.fn(), combined: vi.fn(), replace: vi.fn(), saveFile: vi.fn(), mutations: {} as Record<string, { mutate: ReturnType<typeof vi.fn> }> }));
@@ -14,14 +15,14 @@ vi.mock('vue-router', () => ({
 }));
 vi.mock('@tanstack/vue-query', () => ({ useQueryClient: () => ({ invalidateQueries: vi.fn() }) }));
 // A plain holder, not a ref: vi.hoisted runs before the imports this file makes.
-const roots = vi.hoisted(() => ({ list: [] as Record<string, unknown>[] }));
+const roots = vi.hoisted(() => ({ list: [] as Record<string, unknown>[], tree: null as Record<string, unknown> | null }));
 vi.mock('@/api/queries/library', async () => {
   const { computed: c, ref: r } = await import('vue');
   return {
     useRoots: () => ({ data: c(() => roots.list), isSuccess: r(true) }),
     useEntries: queries.entries,
     useCombinedEntries: queries.combined,
-    useTree: () => ({ data: r(null) }),
+    useTree: () => ({ data: r(roots.tree) }),
     useLibraryMutations: () => {
       queries.mutations = Object.fromEntries(
         ['rename', 'move', 'remove', 'createFolder', 'importPaths', 'addRoot', 'updateRoot', 'removeRoot', 'scan']
@@ -43,6 +44,7 @@ vi.mock('@/i18n', () => ({ useI18n: () => ({ t: (key: string) => key, kindLabel:
 
 beforeEach(() => {
   roots.list = [{ id: 'models', name: 'All models', path: '/models', exists: true }];
+  roots.tree = null;
   library.settings = { delete_to_trash: true };
   queries.combined.mockReturnValue({ data: computed(() => undefined), isPending: ref(false), isError: ref(false) });
   queries.saveFile.mockReset();
@@ -338,6 +340,48 @@ describe('the root path', () => {
     const wrapper = mountWithItems();
     await flushPromises();
     expect(wrapper.findComponent(PathText).props('path')).toBe('/root/model');
+    wrapper.unmount();
+  });
+});
+
+describe('the folder panel on a narrow screen', () => {
+  it('starts closed, opens from its button and closes again once a folder is picked', async () => {
+    const narrow = vi.spyOn(window, 'matchMedia').mockReturnValue({ matches: true, addEventListener: () => {}, removeEventListener: () => {} } as unknown as MediaQueryList);
+    roots.tree = { name: 'All models', path: '', folder_kind: null, children: [{ name: 'loras', path: 'loras', folder_kind: 'lora', children: [] }] };
+    queries.entries.mockReturnValue({ data: computed(() => ({ folders: [], models: [], pending_detection: 0 })), isPending: ref(false), isError: ref(false) });
+    onTestFinished(() => narrow.mockRestore());
+    const wrapper = shallowMount(LibraryView, {
+      global: { stubs: { FileDropZone: { template: '<div><slot /></div>' }, ModelGrid: true } },
+    });
+    await flushPromises();
+    const shown = () => wrapper.find('.side-wrap').attributes('style') !== 'display: none;';
+    const toggle = () => wrapper.findAllComponents(IconButton).find((b) => b.classes('side-toggle'))!;
+
+    expect(wrapper.classes()).toContain('stacked');
+    expect(shown()).toBe(false);
+    expect(toggle().props('expanded')).toBe(false);
+
+    toggle().vm.$emit('click', new MouseEvent('click'));
+    await flushPromises();
+    expect(shown()).toBe(true);
+    expect(toggle().props('label')).toBe('library.hideFolders');
+
+    wrapper.findComponent(FolderTree).vm.$emit('select', 'loras');
+    await flushPromises();
+    expect(shown()).toBe(false);
+    expect(toValue(queries.entries.mock.lastCall![1])).toBe('loras');
+    wrapper.unmount();
+  });
+
+  it('stays beside the contents, with no button, on a wide screen', async () => {
+    queries.entries.mockReturnValue({ data: computed(() => null), isPending: ref(false), isError: ref(false) });
+    const wrapper = shallowMount(LibraryView, {
+      global: { stubs: { FileDropZone: { template: '<div><slot /></div>' }, ModelGrid: true } },
+    });
+    await flushPromises();
+    expect(wrapper.classes()).not.toContain('stacked');
+    expect(wrapper.find('.side-wrap').attributes('style')).toBeUndefined();
+    expect(wrapper.findAllComponents(IconButton).some((b) => b.classes('side-toggle'))).toBe(false);
     wrapper.unmount();
   });
 });

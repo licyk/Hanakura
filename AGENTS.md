@@ -470,6 +470,14 @@ hidden below 900 px the open state must keep the sized track **first**, because 
 is out of the grid and the pane is then the first item. Picking another repository while the pane
 is open is a `fade-through` on the pane's content, which is keyed by repository id.
 
+**The Library's folder panel folds away when narrow.** Below 840 px (a phone, a tablet held
+upright) the panel would stack above the contents and leave them a sliver, so it starts closed.
+A folder-tree button before the breadcrumbs opens and closes it (`aria-expanded` through
+`IconButton`'s `expanded`), picking a folder in it closes it again, and narrowing the window
+closes it. The layout follows `useMediaQuery` through the `stacked` class, not a CSS media query,
+so the layout and the button cannot disagree. The panel's padding sits inside `.side-wrap`,
+because the collapse transition animates that wrapper's height.
+
 **Dialogs on a phone.** `AppDialog` becomes a bottom sheet below 600 px, with the phone's own
 gutters and `env(safe-area-inset-bottom)` under the last row. Its centring grid declares
 `minmax(0, 1fr)`: with the default `auto` track, a panel whose content has a wide minimum — a long

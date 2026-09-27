@@ -150,6 +150,8 @@ export default {
     emptyTitle: 'This folder is empty',
     emptyText: 'Choose files to upload, drop them here, or import files that are already on the server.',
     newFolder: 'New folder',
+    showFolders: 'Show folders',
+    hideFolders: 'Hide folders',
     folderName: 'Folder name',
     upload: 'Upload',
     uploadFiles: 'Choose files…',

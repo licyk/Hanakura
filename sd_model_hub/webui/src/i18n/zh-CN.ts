@@ -152,6 +152,8 @@ const zhCN: typeof en = {
     emptyTitle: '此文件夹为空',
     emptyText: '选择文件上传、把文件拖到这里，或导入服务器上已有的文件。',
     newFolder: '新建文件夹',
+    showFolders: '显示文件夹',
+    hideFolders: '隐藏文件夹',
     folderName: '文件夹名称',
     upload: '上传',
     uploadFiles: '选择文件…',
