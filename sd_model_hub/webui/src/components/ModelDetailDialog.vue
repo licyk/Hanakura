@@ -106,9 +106,9 @@ async function copy(text: string) {
 .loading, .detail { display: flex; flex-direction: column; gap: var(--app-space-4); }
 .meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--app-space-2); }
 .link { display: inline-flex; align-items: center; gap: var(--app-space-1); color: var(--md-sys-color-primary); text-decoration: none; margin-left: auto; }
-.gallery { display: grid; grid-auto-flow: column; grid-auto-columns: 160px; gap: var(--app-space-2); overflow-x: auto; padding-bottom: var(--app-space-1); }
+.gallery { display: grid; grid-auto-flow: column; grid-auto-columns: clamp(160px, 12vw, 280px); gap: var(--app-space-2); overflow-x: auto; padding-bottom: var(--app-space-1); }
 .shot { border-radius: var(--md-sys-shape-corner-medium); overflow: hidden; }
-.version { max-width: 420px; }
+.version { width: min(100%, max(420px, 40%)); }
 h3 { margin: 0 0 var(--app-space-2); }
 .words { display: flex; flex-wrap: wrap; gap: var(--app-space-2); }
 .word {

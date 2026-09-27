@@ -37,6 +37,6 @@ const optional = (v: string | null) => v || null;
 
 <style scoped>
 .filter-bar { display: flex; flex-direction: column; gap: var(--app-space-3); }
-.search { width: 100%; max-width: 720px; }
+.search { width: 100%; }
 .filters { display: flex; flex-wrap: wrap; gap: var(--app-space-2); }
 </style>

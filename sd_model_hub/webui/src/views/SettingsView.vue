@@ -6,11 +6,11 @@ import { useRoots } from '@/api/queries/library';
 import { useSources } from '@/api/queries/sources';
 import { useHubs } from '@/api/queries/hubs';
 import CivitaiAuthPanel from '@/components/CivitaiAuthPanel.vue';
-import { LOCALES, useI18n } from '@/i18n';
+import { useI18n } from '@/i18n';
 import { usePreferencesStore } from '@/stores/preferences';
 import { AppIcon, Divider, SegmentedButton, SelectField, Skeleton, Slider, Surface, Switch, TextField, TokenField, icons, useSnackbar } from '@/ui';
 
-const { t } = useI18n();
+const { t, localeOptions } = useI18n();
 const settings = useSettings();
 const update = useUpdateSettings();
 const snackbar = useSnackbar();
@@ -71,7 +71,7 @@ const librarySwitches = [
         <Slider v-model="prefs.prefs.contrast" :label="t('settings.contrast')" :min="0" :max="1" :step="0.5" ticks />
         <div class="field-row">
           <span class="type-body-large">{{ t('settings.language') }}</span>
-          <SelectField v-model="prefs.prefs.locale" :options="LOCALES" />
+          <SelectField v-model="prefs.prefs.locale" :options="localeOptions" />
         </div>
       </Surface>
 

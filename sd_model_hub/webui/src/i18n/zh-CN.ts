@@ -269,6 +269,7 @@ const zhCN: typeof en = {
     sourceColor: '主题色',
     contrast: '对比度',
     language: '语言',
+    languageAuto: '自动检测（{language}）',
     host: '监听地址',
     port: '端口',
     restartNeeded: '重启后生效',

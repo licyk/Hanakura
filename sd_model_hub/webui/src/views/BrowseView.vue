@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { useQueryClient } from '@tanstack/vue-query';
 import { computed, reactive, ref, watch } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
 import { api, unwrap } from '@/api/client';
 import { useCreateDownload } from '@/api/queries/downloads';
 import { keys } from '@/api/queries/keys';
@@ -17,10 +16,10 @@ import { useI18n } from '@/i18n';
 import { useDownloadsStore } from '@/stores/downloads';
 import { usePreferencesStore } from '@/stores/preferences';
 import { AppButton, EmptyState, IconButton, Skeleton, icons, useSnackbar } from '@/ui';
+import { useViewQuery } from '@/viewState';
 
 const { t, kindLabel } = useI18n();
-const route = useRoute();
-const router = useRouter();
+const route = useViewQuery();
 const qc = useQueryClient();
 const prefs = usePreferencesStore();
 const downloads = useDownloadsStore();
@@ -38,20 +37,17 @@ watch(source, (s, old) => {
   if (old !== undefined) Object.assign(params, { kind: null, base_model: null, sort: null });
 });
 watch([source, params], () => {
-  router.replace({ query: { source: source.value, q: params.query || undefined, kind: params.kind ?? undefined, base: params.base_model ?? undefined, sort: params.sort ?? undefined } });
+  route.replace({ source: source.value, q: params.query || undefined, kind: params.kind ?? undefined, base: params.base_model ?? undefined, sort: params.sort ?? undefined });
 });
 // A shared link opened while this view is already showing must move it, not only fill it on first load.
-watch(
-  () => route.query,
-  (q) => {
-    const next = { query: str(q.q) ?? '', kind: str(q.kind), base_model: str(q.base), sort: str(q.sort) };
-    if (str(q.source) && str(q.source) !== source.value) source.value = str(q.source)!;
-    if (JSON.stringify(next) !== JSON.stringify({ query: params.query, kind: params.kind, base_model: params.base_model, sort: params.sort })) {
-      Object.assign(params, next);
-      draft.value = next.query;
-    }
-  },
-);
+route.onChange((q) => {
+  const next = { query: str(q.q) ?? '', kind: str(q.kind), base_model: str(q.base), sort: str(q.sort) };
+  if (str(q.source) && str(q.source) !== source.value) source.value = str(q.source)!;
+  if (JSON.stringify(next) !== JSON.stringify({ query: params.query, kind: params.kind, base_model: params.base_model, sort: params.sort })) {
+    Object.assign(params, next);
+    draft.value = next.query;
+  }
+});
 watch(
   () => sources.data.value,
   (list) => {

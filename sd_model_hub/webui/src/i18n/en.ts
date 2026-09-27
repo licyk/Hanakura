@@ -267,6 +267,7 @@ export default {
     sourceColor: 'Source colour',
     contrast: 'Contrast',
     language: 'Language',
+    languageAuto: 'Auto detect ({language})',
     host: 'Host',
     port: 'Port',
     restartNeeded: 'Takes effect after a restart',

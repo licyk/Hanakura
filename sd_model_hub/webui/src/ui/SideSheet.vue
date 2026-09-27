@@ -33,7 +33,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
 <style scoped>
 .scrim { position: fixed; inset: 0; background: color-mix(in srgb, var(--md-sys-color-scrim) 32%, transparent); z-index: 30; }
 .sheet {
-  position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 100vw); z-index: 31; display: flex; flex-direction: column;
+  position: fixed; top: 0; right: 0; bottom: 0; width: min(100vw, clamp(420px, 30vw, 720px)); z-index: 31; display: flex; flex-direction: column;
   background: var(--md-sys-color-surface-container-low); color: var(--md-sys-color-on-surface);
   border-radius: var(--md-sys-shape-corner-large) 0 0 var(--md-sys-shape-corner-large); box-shadow: var(--app-elevation-2);
 }

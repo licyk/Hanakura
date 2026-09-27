@@ -169,7 +169,7 @@ const rows = computed(() => {
 
 <style scoped>
 .loading { display: flex; flex-direction: column; gap: var(--app-space-2); }
-.layout { display: grid; grid-template-columns: minmax(0, 220px) minmax(0, 1fr); gap: var(--app-space-4); align-items: start; }
+.layout { display: grid; grid-template-columns: minmax(0, clamp(220px, 25%, 420px)) minmax(0, 1fr); gap: var(--app-space-4); align-items: start; }
 .preview { border-radius: var(--md-sys-shape-corner-medium); overflow: hidden; }
 .facts { display: flex; flex-direction: column; gap: var(--app-space-3); min-width: 0; }
 .warning { display: flex; gap: var(--app-space-2); align-items: flex-start; padding: var(--app-space-3); border-radius: var(--md-sys-shape-corner-medium); background: var(--md-sys-color-error-container); color: var(--md-sys-color-on-error-container); }

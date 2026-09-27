@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -31,5 +31,22 @@ function rule(file: string, selector: string): string {
 describe('rows that hold a file name', () => {
   it.each(ROWS)('%s %s can shrink below the name', (file, selector) => {
     expect(rule(file, selector)).toContain('min-width: 0');
+  });
+});
+
+/**
+ * A component capped at a fixed width stops growing with the window, leaving a wide screen mostly
+ * margin. Caps scale with the viewport instead (`clamp()`, `max()`); a fixed pixel cap belongs only
+ * inside a media query, where the window size is already known.
+ */
+describe('widths follow the window', () => {
+  const files = (dir: string): string[] =>
+    readdirSync(join(SRC, dir), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? files(join(dir, e.name)) : e.name.endsWith('.vue') ? [join(dir, e.name)] : []));
+
+  it.each(files('.'))('%s has no fixed max-width outside a media query', (file) => {
+    const style = /<style[^>]*>([\s\S]*?)<\/style>/.exec(readFileSync(join(SRC, file), 'utf8'))?.[1] ?? '';
+    const outside = style.replace(/@media[^{]*\{(?:[^{}]*\{[^}]*\})*[^{}]*\}/g, '');
+    expect(outside).not.toMatch(/max-width:\s*\d+px/);
+    expect(outside).not.toMatch(/width:\s*min\(\s*\d+px/);
   });
 });

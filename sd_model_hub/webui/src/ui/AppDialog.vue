@@ -84,9 +84,11 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
   background: var(--md-sys-color-surface-container-high); color: var(--md-sys-color-on-surface);
   border-radius: var(--md-sys-shape-corner-extra-large); box-shadow: var(--app-elevation-3);
 }
-.small { max-width: 400px; }
-.medium { max-width: 640px; }
-.large { max-width: 1040px; }
+/* Dialogs grow with the window: a form only up to a comfortable width, a large one — model
+   details, header metadata — with most of it, so a wide screen shows more rather than margins. */
+.small { max-width: clamp(400px, 30vw, 640px); }
+.medium { max-width: clamp(640px, 45vw, 1040px); }
+.large { max-width: max(1040px, 80vw); }
 .head { display: flex; align-items: center; justify-content: space-between; gap: var(--app-space-2); padding: var(--app-space-4) var(--app-space-4) 0 var(--app-space-6); }
 /* A model name can be one long unbroken word: break it, and keep the header at two lines. */
 .title { margin: 0; overflow: hidden; text-overflow: ellipsis; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }

@@ -23,5 +23,5 @@ const model = defineModel<number>({ default: 0 });
 
 <style scoped>
 .slider-row { display: flex; align-items: center; justify-content: space-between; gap: var(--app-space-4); min-height: 56px; }
-md-slider { flex: 0 1 260px; }
+md-slider { flex: 0 1 max(260px, 30%); }
 </style>

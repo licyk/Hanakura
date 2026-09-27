@@ -495,7 +495,26 @@ that carry a name and holds the rule.
 
 Preferences (theme, source colour, contrast, language, last source, hub and root, view mode) are
 client state: `localStorage` plus the server's client-state endpoint, with an early script in
-`index.html` applying the theme before the bundle loads to avoid a flash.
+`index.html` applying the theme before the bundle loads to avoid a flash. The language defaults
+to `auto`, which follows `navigator.language` (and its `languagechange` event): any `zh` tag
+gives `zh-CN`, anything unsupported gives English. `useI18n().locale` is always the resolved
+locale; only the preference holds `auto`.
+
+**Widths follow the window.** A fixed pixel `max-width` (or `width: min(Npx, …)`) outside a media
+query leaves a wide screen mostly margin; caps scale with the viewport through `clamp()` or
+`max()` instead — form dialogs up to a comfortable bound, large dialogs, the Library's folder side
+and the model cards with the window. `layout.test.ts` holds this for every `.vue` style block.
+
+**Views keep their state in memory, never on disk.** `App.vue` wraps the routed views in
+`<KeepAlive>`, so a search, an open folder, a tab or an expanded panel survives switching views,
+and a reload starts afresh. Two pieces live in `src/viewState.ts`: the last location of each view,
+which the navigation links open (choosing the destination already on screen still returns it to
+its start), and scroll positions, captured in `router.beforeEach` and restored in the transition's
+`enter` hook — only when the view returns to the same URL, since a browser resets scrolling on
+elements that leave the document. A kept-alive view goes on reacting in the background, so a view
+that reads or writes its URL query must use `useViewQuery()`: it follows the URL only while
+the view is on screen, and a change made while hidden updates the remembered location instead of
+another view's URL.
 
 Uploads reach the library two ways: files or a whole folder dropped on the screen, and the same
 through the system file picker behind the **Upload** button, which uses one throwaway

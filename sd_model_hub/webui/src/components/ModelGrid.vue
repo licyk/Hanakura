@@ -56,8 +56,9 @@ onBeforeUnmount(() => observer?.disconnect());
 .model-grid { position: relative; display: grid; gap: var(--app-space-3); }
 .layout-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
 .layout-list { grid-template-columns: 1fr; gap: var(--app-space-2); }
+/* Cards grow with a wide window instead of only multiplying into ever more narrow columns. */
 @media (min-width: 1200px) {
-  .layout-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+  .layout-grid { grid-template-columns: repeat(auto-fill, minmax(clamp(200px, 11vw, 320px), 1fr)); }
 }
 @media (max-width: 599px) {
   .layout-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: var(--app-space-2); }

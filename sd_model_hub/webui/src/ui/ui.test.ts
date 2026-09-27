@@ -4,7 +4,7 @@ import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 import { nextTick } from 'vue';
 import { formatBytes, parentPath, pathSegments } from '@/format';
-import { translate } from '@/i18n';
+import { resolveLocale, translate } from '@/i18n';
 import { windowClass } from '@/theme/breakpoints';
 import { generateScheme } from '@/theme/scheme';
 import Breadcrumbs from '@/ui/Breadcrumbs.vue';
@@ -114,6 +114,18 @@ describe('i18n and formatting', () => {
     expect(translate('zh-CN', 'library.selected', { n: 3 })).toBe('已选择 3 项');
     expect(translate('en', 'library.selected', { n: 3 })).toBe('3 selected');
     expect(translate('en', 'no.such.key')).toBe('no.such.key');
+  });
+  it('auto detect follows a supported system language and falls back to English', () => {
+    expect(resolveLocale('auto', 'zh-CN')).toBe('zh-CN');
+    expect(resolveLocale('auto', 'zh-Hant-TW')).toBe('zh-CN');
+    expect(resolveLocale('auto', 'en-GB')).toBe('en');
+    expect(resolveLocale('auto', 'fr-FR')).toBe('en');
+    expect(resolveLocale('auto', 'zhx')).toBe('en');
+    expect(resolveLocale('auto', null)).toBe('en');
+    // A chosen language wins over the system; an unknown stored value is treated as auto.
+    expect(resolveLocale('en', 'zh-CN')).toBe('en');
+    expect(resolveLocale('zh-CN', 'en-US')).toBe('zh-CN');
+    expect(resolveLocale('klingon', 'zh-CN')).toBe('zh-CN');
   });
   it('formats sizes and paths', () => {
     expect(formatBytes(1536)).toBe('1.5 KB');

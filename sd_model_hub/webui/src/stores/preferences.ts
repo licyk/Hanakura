@@ -5,12 +5,14 @@ import type { ThemeMode } from '@/theme/applyTheme';
 import { DEFAULT_SOURCE_COLOR } from '@/theme/scheme';
 
 export type Locale = 'en' | 'zh-CN';
+/** ``auto`` follows the system language; the others fix one. */
+export type LocalePreference = 'auto' | Locale;
 
 export interface Preferences {
   theme: ThemeMode;
   sourceColor: string;
   contrast: number;
-  locale: Locale;
+  locale: LocalePreference;
   lastSource: string;
   lastHub: string;
   lastRoot: string | null;
@@ -20,15 +22,11 @@ export interface Preferences {
 const STORAGE_KEY = 'sd-model-hub:preferences';
 const SERVER_KEY = 'preferences';
 
-function defaultLocale(): Locale {
-  return typeof navigator !== 'undefined' && navigator.language?.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en';
-}
-
 const DEFAULTS: Preferences = {
   theme: 'system',
   sourceColor: DEFAULT_SOURCE_COLOR,
   contrast: 0,
-  locale: defaultLocale(),
+  locale: 'auto',
   lastSource: 'civitai',
   lastHub: 'huggingface',
   lastRoot: null,

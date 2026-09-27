@@ -20,6 +20,6 @@ defineProps<{ icon: Component; title: string; text?: string }>();
   display: grid; place-items: center; width: 64px; height: 64px; border-radius: var(--md-sys-shape-corner-large);
   background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); margin-bottom: var(--app-space-2);
 }
-.title, .text { margin: 0; max-width: 480px; }
+.title, .text { margin: 0; max-width: max(480px, 40vw); }
 .actions { display: flex; gap: var(--app-space-2); margin-top: var(--app-space-3); flex-wrap: wrap; justify-content: center; }
 </style>

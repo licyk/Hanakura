@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { useQueryClient } from '@tanstack/vue-query';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
 import { previewUrl, saveFile } from '@/api/client';
 import { COMBINED_VIEW_ID, keys } from '@/api/queries/keys';
 import { useCombinedEntries, useEntries, useLibraryMutations, useRoots, useTree } from '@/api/queries/library';
@@ -41,10 +40,10 @@ import {
   type MenuItem,
   useSnackbar,
 } from '@/ui';
+import { useViewQuery } from '@/viewState';
 
 const { t, kindLabel } = useI18n();
-const route = useRoute();
-const router = useRouter();
+const route = useViewQuery();
 const qc = useQueryClient();
 const prefs = usePreferencesStore();
 const uploads = useUploadsStore();
@@ -96,19 +95,16 @@ watch(
 );
 watch([rootId, path], ([r, p]) => {
   if (r) prefs.prefs.lastRoot = r;
-  router.replace({ query: { root: r ?? undefined, path: p || undefined } });
+  route.replace({ root: r ?? undefined, path: p || undefined });
   selection.value = new Map();
 });
 // A link pasted while this view is already open must move it, not only fill it on first load.
-watch(
-  () => [route.query.root, route.query.path],
-  ([r, p]) => {
-    const nextRoot = str(r) ?? rootId.value;
-    const nextPath = str(p) ?? '';
-    if (nextRoot !== rootId.value) rootId.value = nextRoot;
-    if (nextPath !== path.value) path.value = nextPath;
-  },
-);
+route.onChange((q) => {
+  const nextRoot = str(q.root) ?? rootId.value;
+  const nextPath = str(q.path) ?? '';
+  if (nextRoot !== rootId.value) rootId.value = nextRoot;
+  if (nextPath !== path.value) path.value = nextPath;
+});
 
 const entries = useEntries(() => (isCombined.value ? null : rootId.value), path, kind);
 const combined = useCombinedEntries(isCombined);
@@ -618,7 +614,8 @@ const kindFor = (model: ModelEntry) => {
 </template>
 
 <style scoped>
-.library { display: grid; grid-template-columns: 280px minmax(0, 1fr); height: 100%; }
+/* The folder side widens with the window, so long folder names fit on a wide screen. */
+.library { display: grid; grid-template-columns: clamp(280px, 20vw, 480px) minmax(0, 1fr); height: 100%; }
 .no-roots { grid-column: 1 / -1; align-self: center; }
 .side { display: flex; flex-direction: column; gap: var(--app-space-2); padding: var(--app-space-4); border-right: 1px solid var(--md-sys-color-outline-variant); min-height: 0; }
 .root-row { display: flex; align-items: center; gap: var(--app-space-1); }

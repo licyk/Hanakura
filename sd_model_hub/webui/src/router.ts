@@ -1,4 +1,5 @@
 import { createRouter, createWebHashHistory, type RouteRecordRaw } from 'vue-router';
+import { trackLocations } from '@/viewState';
 
 const routes: RouteRecordRaw[] = [
   { path: '/', redirect: '/browse' },
@@ -15,3 +16,4 @@ if (import.meta.env.DEV) {
 
 // Hash history: the UI works at any deployment sub-path with no server-side rewrites.
 export const router = createRouter({ history: createWebHashHistory(), routes });
+trackLocations(router);
