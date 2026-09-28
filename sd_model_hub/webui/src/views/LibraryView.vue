@@ -103,15 +103,16 @@ const sortedRoots = computed(() => {
  */
 const combinedEnabled = computed(() => settings.data.value?.library.combined_view === true);
 const isCombined = computed(() => rootId.value === COMBINED_VIEW_ID);
+// Watched in its own right: with the setting off, the settings arriving leave combinedEnabled false.
+const settingsKnown = computed(() => !!settings.data.value || settings.isError.value);
 
 watch(
-  [sortedRoots, combinedEnabled],
-  ([list, combined]) => {
+  [sortedRoots, combinedEnabled, settingsKnown],
+  ([list, combined, known]) => {
     if (!roots.data.value) return;
     // Whether "All folders" exists is not known until the settings arrive; a remembered or
     // first choice waits for them rather than settling on a root and never moving.
-    const settingsKnown = !!settings.data.value || settings.isError.value;
-    if (!settingsKnown && (rootId.value === null || rootId.value === COMBINED_VIEW_ID)) return;
+    if (!known && (rootId.value === null || rootId.value === COMBINED_VIEW_ID)) return;
     const ids = [...(combined && list.length ? [COMBINED_VIEW_ID] : []), ...list.map((r) => r.id)];
     if (!ids.includes(rootId.value ?? '')) {
       rootId.value = ids[0] ?? null;
@@ -772,7 +773,12 @@ const kindFor = (model: ModelEntry) => {
                     <span class="folder-icon" :class="{ checkable: !item.isRoot }">
                       <AppIcon :icon="icons.Folder" :size="24" class="folder-glyph" />
                       <span v-if="!item.isRoot" class="folder-check" @click.stop>
-                        <Checkbox :model-value="isSelected(item)" dense :label="t('library.select')" @update:model-value="toggle(item, $event)" />
+                        <Checkbox
+                          :model-value="isSelected(item)"
+                          :dense="prefs.prefs.libraryView === 'list'"
+                          :class="prefs.prefs.libraryView === 'list' ? '' : 'select-box'"
+                          @update:model-value="toggle(item, $event)"
+                        />
                       </span>
                     </span>
                     <span class="folder-text">
@@ -906,12 +912,19 @@ const kindFor = (model: ModelEntry) => {
 .folder-icon { display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--md-sys-shape-corner-small); background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); flex: none; }
 /* The icon and the checkbox share one place; the checkbox takes it on hover, while selecting, or once checked. */
 .folder-glyph, .folder-check { grid-area: 1 / 1; transition: opacity var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard); }
-.folder-check { display: grid; place-items: center; opacity: 0; pointer-events: none; }
+/* The card-sized checkbox with its backing is wider than the tile: the track keeps the tile's size
+   rather than growing to fit it, and unsafe centring lets it overflow evenly instead of to the bottom right. */
+.checkable { grid-template: minmax(0, 1fr) / minmax(0, 1fr); }
+.folder-check { display: grid; place-items: center; place-self: unsafe center; opacity: 0; pointer-events: none; }
+/* The tile's colour goes with the glyph, so the checkbox looks as it does on a model card rather than sitting on a coloured square. */
+.checkable { transition: background-color var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard); }
 .selecting .folder-check, .folder.checked .folder-check { opacity: 1; pointer-events: auto; }
 .selecting .checkable .folder-glyph, .folder.checked .folder-glyph { opacity: 0; }
+.selecting .checkable, .folder.checked .checkable { background-color: transparent; }
 @media (hover: hover) {
   .folder:hover .folder-check, .folder:focus-visible .folder-check { opacity: 1; pointer-events: auto; }
   .folder:hover .checkable .folder-glyph, .folder:focus-visible .checkable .folder-glyph { opacity: 0; }
+  .folder:hover .checkable, .folder:focus-visible .checkable { background-color: transparent; }
 }
 .folder-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .folder-name, .folder-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

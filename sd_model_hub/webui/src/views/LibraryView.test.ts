@@ -9,7 +9,8 @@ import { AppMenu, Breadcrumbs, IconButton, PathText, SelectField, icons } from '
 import LibraryView from '@/views/LibraryView.vue';
 
 const queries = vi.hoisted(() => ({ entries: vi.fn(), combined: vi.fn(), replace: vi.fn(), saveFile: vi.fn(), mutations: {} as Record<string, { mutate: ReturnType<typeof vi.fn> }> }));
-const library = vi.hoisted(() => ({ settings: { delete_to_trash: true } as Record<string, unknown> }));
+// ``late`` holds the settings back until a test hands them over through ``data``, as a slow answer would.
+const library = vi.hoisted(() => ({ settings: { delete_to_trash: true } as Record<string, unknown>, late: false, data: null as { value: unknown } | null }));
 vi.mock('@/api/client', () => ({ previewUrl: (root: string, path: string) => `preview:${root}:${path}`, saveFile: queries.saveFile }));
 vi.mock('vue-router', () => ({
   useRoute: () => ({ query: {} }),
@@ -36,7 +37,10 @@ vi.mock('@/api/queries/library', async () => {
 });
 vi.mock('@/api/queries/app', () => ({
   useMeta: () => ({ data: ref({ roots_locked: true, kinds: ['lora'], base_models: [] }) }),
-  useSettings: () => ({ data: ref({ library: library.settings }), isError: ref(false) }),
+  useSettings: () => {
+    library.data = ref(library.late ? undefined : { library: library.settings });
+    return { data: library.data, isError: ref(false) };
+  },
 }));
 vi.mock('@/stores/preferences', () => ({ usePreferencesStore: () => ({ prefs: { lastRoot: null, libraryView: 'grid' } }) }));
 const uploads = vi.hoisted(() => ({ enqueue: vi.fn() }));
@@ -48,6 +52,7 @@ beforeEach(() => {
   roots.list = [{ id: 'models', name: 'All models', path: '/models', exists: true }];
   roots.tree = null;
   library.settings = { delete_to_trash: true };
+  library.late = false;
   queries.combined.mockReturnValue({ data: computed(() => undefined), isPending: ref(false), isError: ref(false) });
   queries.saveFile.mockReset();
 });
@@ -106,6 +111,22 @@ describe('library roots', () => {
     const root = wrapper.findAllComponents(SelectField).find((field) => field.props('label') === 'library.root')!;
     expect(root.props('options').map((o: { value: string }) => o.value)).toEqual(['models', 'loras', 'vae']);
     expect(root.props('modelValue')).toBe('models');
+    wrapper.unmount();
+  });
+
+  it('opens the first root once the settings arrive after the roots', async () => {
+    library.late = true;
+    queries.entries.mockReturnValue({ data: computed(() => null), isPending: ref(false), isError: ref(false) });
+    const wrapper = shallowMount(LibraryView, {
+      global: { stubs: { FileDropZone: { template: '<div><slot /></div>' }, ModelGrid: true } },
+    });
+    await flushPromises();
+    const root = () => wrapper.findAllComponents(SelectField).find((field) => field.props('label') === 'library.root')!;
+    expect(root().props('modelValue')).toBeNull();
+
+    library.data!.value = { library: library.settings };
+    await flushPromises();
+    expect(root().props('modelValue')).toBe('models');
     wrapper.unmount();
   });
 });
@@ -596,6 +617,16 @@ describe('selection mode', () => {
     bar(wrapper).vm.$emit('clear');
     await flushPromises();
     expect(bar(wrapper).props('count')).toBe(0);
+    wrapper.unmount();
+  });
+
+  it('gives a folder the checkbox a model card has, with no label drawn over its name', async () => {
+    const wrapper = mountWithItems();
+    await flushPromises();
+    const box = wrapper.find('button.folder').findComponent({ name: 'Checkbox' });
+    expect(box.props('label')).toBeUndefined();
+    expect(box.props('dense')).toBe(false);
+    expect(box.classes()).toContain('select-box');
     wrapper.unmount();
   });
 
