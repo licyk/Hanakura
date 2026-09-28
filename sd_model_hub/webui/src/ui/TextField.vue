@@ -51,5 +51,5 @@ function onInput(event: Event) {
 </template>
 
 <style scoped>
-.text-field { width: 100%; }
+.text-field { width: 100%; --md-outlined-text-field-input-text-placeholder-color: var(--app-color-placeholder); }
 </style>

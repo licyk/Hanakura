@@ -79,8 +79,8 @@ const themeIcon = computed(() => ({ light: icons.Sun, dark: icons.Moon, system: 
       <IconButton :icon="icons.Sparkles" :label="t('app.title')" tonal />
     </template>
     <template #actions>
-      <IconButton :icon="themeIcon" :label="`${t('settings.theme')}: ${t(`settings.themes.${prefs.prefs.theme}`)}`" @click="cycleTheme" />
       <IconButton :icon="icons.Download" :label="t('nav.downloads')" :badge="activeCount || null" @click="downloadsStore.drawerOpen = true" />
+      <IconButton :icon="themeIcon" :label="`${t('settings.theme')}: ${t(`settings.themes.${prefs.prefs.theme}`)}`" @click="cycleTheme" />
     </template>
     <RouterView v-slot="{ Component, route }">
       <Transition :name="TRANSITIONS.fadeThrough" mode="out-in" @enter="restoreView">

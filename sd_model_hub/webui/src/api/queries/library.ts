@@ -33,10 +33,10 @@ export function useCombinedEntries(enabled: MaybeRefOrGetter<boolean>) {
   });
 }
 
-export function useTree(rootId: MaybeRefOrGetter<string | null>) {
+export function useTree(rootId: MaybeRefOrGetter<string | null>, enabled: MaybeRefOrGetter<boolean> = true) {
   return useQuery({
     queryKey: computed(() => keys.tree(toValue(rootId) ?? '')),
-    enabled: computed(() => !!toValue(rootId)),
+    enabled: computed(() => !!toValue(rootId) && toValue(enabled)),
     queryFn: () => unwrap(api.GET('/api/v1/library/roots/{root_id}/tree', { params: { path: { root_id: toValue(rootId)! } } })),
   });
 }

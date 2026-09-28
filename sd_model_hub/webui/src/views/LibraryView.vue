@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { useQueryClient } from '@tanstack/vue-query';
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, onActivated, onBeforeUnmount, onDeactivated, ref, watch } from 'vue';
 import { previewUrl, saveFile } from '@/api/client';
 import { COMBINED_VIEW_ID, keys } from '@/api/queries/keys';
 import { useCombinedEntries, useEntries, useLibraryMutations, useRoots, useTree } from '@/api/queries/library';
 import { useMeta } from '@/api/queries/app';
-import type { FolderEntry, ModelEntry, PathRef, TreeNode } from '@/api/types';
+import type { FolderEntry, ModelEntry, PathRef } from '@/api/types';
 import FileDropZone, { type DroppedFile } from '@/components/FileDropZone.vue';
 import FolderTree from '@/components/FolderTree.vue';
 import ModelCard from '@/components/ModelCard.vue';
@@ -14,7 +14,10 @@ import ModelInfoDialog from '@/components/ModelInfoDialog.vue';
 import MoveDialog from '@/components/MoveDialog.vue';
 import RenameDialog from '@/components/RenameDialog.vue';
 import RootDialog from '@/components/RootDialog.vue';
-import { fileExtensionLabel, formatBytes, pathSegments } from '@/format';
+import SelectionBar from '@/components/SelectionBar.vue';
+import { columnsOf, moveFocus, rangeOf } from '@/components/gridKeyboard';
+import { carriesRefs, readDrop, startDrag } from '@/components/libraryDrag';
+import { fileExtensionLabel, formatBytes, parentPath, pathSegments } from '@/format';
 import { useI18n } from '@/i18n';
 import { useDownloadsStore } from '@/stores/downloads';
 import { usePreferencesStore } from '@/stores/preferences';
@@ -36,9 +39,10 @@ import {
   SelectField,
   Skeleton,
   TextField,
-  collapseHooks,
+  TRANSITIONS,
   icons,
   type MenuItem,
+  useElementHeight,
   useMediaQuery,
   useSnackbar,
 } from '@/ui';
@@ -64,15 +68,24 @@ const direction = ref(1);
 
 /**
  * Too narrow for the folders beside the contents — a phone, a tablet held upright — the folder
- * panel would sit above them and leave the contents a sliver. There it starts closed, a button
- * opens it, and picking a folder closes it again.
+ * panel is a drawer over them. It opens below the toolbar, which stays usable (its button closes
+ * the drawer again, however many rows the toolbar wraps onto); a tap on the scrim, Escape or a
+ * picked folder closes it too.
  */
-const stacked = useMediaQuery('(max-width: 839px)');
+const narrow = useMediaQuery('(max-width: 839px)');
 const sideOpen = ref(false);
-const sideShown = computed(() => !stacked.value || sideOpen.value);
-watch(stacked, (value) => {
+watch(narrow, (value) => {
   if (value) sideOpen.value = false;
 });
+const head = ref<HTMLElement | null>(null);
+const headHeight = useElementHeight(head);
+const drawerOpen = computed(() => narrow.value && sideOpen.value);
+const belowHead = computed(() => ({ top: `${headHeight.value}px` }));
+const onDrawerKey = (event: KeyboardEvent) => event.key === 'Escape' && !event.defaultPrevented && (sideOpen.value = false);
+watch(drawerOpen, (open) => (open ? document.addEventListener('keydown', onDrawerKey) : document.removeEventListener('keydown', onDrawerKey)));
+onActivated(() => drawerOpen.value && document.addEventListener('keydown', onDrawerKey));
+onDeactivated(() => document.removeEventListener('keydown', onDrawerKey));
+onBeforeUnmount(() => document.removeEventListener('keydown', onDrawerKey));
 
 /**
  * A root with no kind hint holds a whole model directory; one with a hint is dedicated to a
@@ -110,7 +123,7 @@ watch(
 watch([rootId, path], ([r, p]) => {
   if (r) prefs.prefs.lastRoot = r;
   route.replace({ root: r ?? undefined, path: p || undefined });
-  selection.value = new Map();
+  if (!keepSelection.value) selection.value = new Map();
 });
 // A link pasted while this view is already open must move it, not only fill it on first load.
 route.onChange((q) => {
@@ -154,6 +167,10 @@ function onCrumb(value: string) {
   path.value = '';
 }
 
+// Up from a root's top leads to "All folders" when it is offered.
+const canGoUp = computed(() => !!path.value || (combinedEnabled.value && !isCombined.value));
+const goUp = () => (path.value ? navigate(parentPath(path.value)) : canGoUp.value && onCrumb(ALL_CRUMB));
+
 /**
  * Every item carries its root: in "All folders" the folders on screen come from several roots, and
  * each action goes to the one the item belongs to. ``label`` tells equal names apart there, and an
@@ -187,35 +204,89 @@ function openFolder(item: FolderItem) {
   path.value = item.folder.path;
 }
 
-/** In "All folders" the side lists the same first-level folders, under the same labels. */
-const sideTree = computed<TreeNode | null>(() => {
-  if (!isCombined.value) return tree.data.value ?? null;
-  if (!combined.data.value) return null;
-  const folders = items.value.filter((i): i is FolderItem => i.type === 'folder');
-  return { name: t('library.allFolders'), path: '', folder_kind: null, children: folders.map((i) => ({ name: i.label, path: itemKey(i), folder_kind: i.folder.folder_kind ?? null, children: [] })) };
-});
-function onTreeSelect(key: string) {
-  if (stacked.value) sideOpen.value = false;
-  if (!isCombined.value) return navigate(key);
-  const item = items.value.find((i) => itemKey(i) === key);
-  if (item?.type === 'folder') openFolder(item);
+/**
+ * In "All folders" each first-level folder is a tree of its own, marked with the root it comes
+ * from, and opening one moves into that root.
+ */
+const combinedTrees = computed(() =>
+  (combined.data.value?.folders ?? []).map((folder) => ({ key: refKey({ root_id: folder.root_id, path: folder.path }), folder, node: { name: folder.name, path: folder.path, folder_kind: folder.folder_kind ?? null, children: [] } })),
+);
+function onTreeSelect(to: string, inRoot?: string) {
+  sideOpen.value = false;
+  if (!inRoot || inRoot === rootId.value) return navigate(to);
+  direction.value = 1;
+  rootId.value = inRoot;
+  path.value = to;
 }
 const missingRoots = computed(() => {
   const ids = isCombined.value ? (combined.data.value?.missing_roots ?? []) : [];
   return ids.map((id) => roots.data.value?.find((r) => r.id === id)?.name ?? id).join(', ');
 });
 
-// Selection
+/**
+ * Selection. While anything is selected the view is in selection mode: a bar of its own slides in
+ * below the toolbar, every card shows its checkbox, a click toggles an item instead of opening it,
+ * and an item's menu acts on the whole selection when the item is part of it. The selection holds
+ * each item with its root, so with ``keepSelection`` it can gather items from several folders.
+ */
 const selection = ref(new Map<string, PathRef>());
+const keepSelection = ref(false);
+const selecting = computed(() => selection.value.size > 0);
 const isSelected = (i: Item) => selection.value.has(refKey(itemRef(i)));
+// Where a Shift range starts: the item last toggled or clicked.
+const anchor = ref<string | null>(null);
 const toggle = (i: Item, on: boolean) => {
   const r = itemRef(i);
   const next = new Map(selection.value);
   if (on) next.set(refKey(r), r);
   else next.delete(refKey(r));
   selection.value = next;
+  anchor.value = refKey(r);
 };
+/**
+ * A click or a key with modifiers: Ctrl/Cmd toggles the item, Shift selects the range from the
+ * anchor, replacing the selection unless Ctrl/Cmd is held too or the selection is kept. False
+ * when the modifiers ask for nothing, so the item is opened as usual.
+ */
+function selectWith(item: Item, mods: { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean }): boolean {
+  if (item.type === 'folder' && item.isRoot) return false;
+  const adding = !!(mods.ctrlKey || mods.metaKey);
+  if (mods.shiftKey && anchor.value) {
+    const order = selectable.value.map((i) => refKey(itemRef(i)));
+    const next = adding || keepSelection.value ? new Map(selection.value) : new Map<string, PathRef>();
+    const byKey = new Map(selectable.value.map((i) => [refKey(itemRef(i)), itemRef(i)]));
+    for (const key of rangeOf(order, anchor.value, refKey(itemRef(item)))) next.set(key, byKey.get(key)!);
+    selection.value = next;
+    return true;
+  }
+  if (adding) {
+    toggle(item, !isSelected(item));
+    return true;
+  }
+  return false;
+}
 const selected = computed(() => [...selection.value.values()]);
+// A whole root cannot be moved or deleted, so it is never part of a selection.
+const selectable = computed(() => items.value.filter((i) => !(i.type === 'folder' && i.isRoot)));
+const selectableTotal = computed(() => new Set([...selection.value.keys(), ...selectable.value.map((i) => refKey(itemRef(i)))]).size);
+function selectAll() {
+  const next = new Map(selection.value);
+  for (const i of selectable.value) next.set(refKey(itemRef(i)), itemRef(i));
+  selection.value = next;
+}
+// Letting go of a kept selection leaves only what is on screen selected.
+watch(keepSelection, (keep) => {
+  if (keep) return;
+  const here = new Set(items.value.map((i) => refKey(itemRef(i))));
+  selection.value = new Map([...selection.value].filter(([key]) => here.has(key)));
+});
+const clearSelection = () => {
+  selection.value = new Map();
+  anchor.value = null;
+};
+/** The items an item's menu acts on: the whole selection when the item is part of it. */
+const actedOn = (i: Item) => (isSelected(i) ? selected.value : [itemRef(i)]);
+const actsOnSelection = (i: Item) => isSelected(i) && selection.value.size > 1;
 
 // Dialogs
 const infoOpen = ref(false);
@@ -259,6 +330,41 @@ function doMove(dest: { rootId: string; dir: string }) {
         moveOpen.value = false;
         selection.value = new Map();
         qc.invalidateQueries({ queryKey: ['library'] });
+      },
+      onError: (e) => snackbar.error((e as Error).message),
+    },
+  );
+}
+
+/**
+ * Drag and drop: a card or folder dragged onto a folder, in the grid or the tree, moves there,
+ * taking the whole selection along when it is part of it. A whole root cannot be moved.
+ */
+const dropKey = ref<string | null>(null);
+function onDragStart(item: Item, event: DragEvent) {
+  const own = itemRef(item);
+  startDrag(event, selection.value.has(refKey(own)) ? selected.value : [own]);
+}
+function onFolderDragOver(item: FolderItem, event: DragEvent) {
+  if (!carriesRefs(event)) return;
+  event.preventDefault();
+  event.dataTransfer!.dropEffect = 'move';
+  dropKey.value = itemKey(item);
+}
+function dropInto(event: DragEvent, destRoot: string | null, dir: string) {
+  dropKey.value = null;
+  if (!destRoot || !carriesRefs(event)) return;
+  event.preventDefault();
+  const items = readDrop(event, destRoot, dir);
+  if (!items.length) return;
+  const folder = dir.split('/').pop() || (roots.data.value?.find((r) => r.id === destRoot)?.name ?? '/');
+  m.move.mutate(
+    { items, dest_root_id: destRoot, dest_dir: dir, on_conflict: 'error' },
+    {
+      onSuccess: () => {
+        selection.value = new Map();
+        qc.invalidateQueries({ queryKey: ['library'] });
+        snackbar.show(t('library.movedTo', { n: items.length, folder }));
       },
       onError: (e) => snackbar.error((e as Error).message),
     },
@@ -370,30 +476,110 @@ function onRootMenu(id: string) {
   if (id === 'remove') removeRootOpen.value = true;
 }
 
-// A diffusers model is a folder, which a browser cannot save as one download.
-const modelMenu = (model: ModelEntry): MenuItem[] => [
-  { id: 'info', label: t('common.info'), icon: icons.Info },
-  ...(model.is_dir ? [] : [{ id: 'download', label: t('library.download'), icon: icons.Download }]),
-  { id: 'rename', label: t('common.rename'), icon: icons.Pencil },
-  { id: 'move', label: t('common.move'), icon: icons.Move },
-  { id: 'delete', label: t('common.delete'), icon: icons.Trash2, danger: true },
-];
-function onModelMenu(id: string, item: ModelItem) {
+/**
+ * An item's menu. Part of a larger selection, it offers only what applies to the whole selection;
+ * otherwise it acts on the item alone and can start or end a selection with it.
+ */
+function itemMenu(item: Item): MenuItem[] {
+  if (actsOnSelection(item)) {
+    const n = selection.value.size;
+    return [
+      { id: 'move', label: t('library.moveItems', { n }), icon: icons.FolderInput },
+      { id: 'delete', label: t('library.deleteItems', { n }), icon: icons.Trash2, danger: true },
+      { id: 'deselect', label: t('library.deselect'), icon: icons.X },
+    ];
+  }
+  const own: MenuItem[] =
+    item.type === 'model'
+      ? [
+          { id: 'info', label: t('common.info'), icon: icons.Info },
+          // A diffusers model is a folder, which a browser cannot save as one download.
+          ...(item.model.is_dir ? [] : [{ id: 'download', label: t('library.download'), icon: icons.Download }]),
+        ]
+      : [];
+  return [
+    isSelected(item) ? { id: 'deselect', label: t('library.deselect'), icon: icons.X } : { id: 'select', label: t('library.select'), icon: icons.SquareCheck },
+    ...own,
+    { id: 'rename', label: t('common.rename'), icon: icons.Pencil },
+    { id: 'move', label: t('common.move'), icon: icons.Move },
+    { id: 'delete', label: t('common.delete'), icon: icons.Trash2, danger: true },
+  ];
+}
+function onItemMenu(id: string, item: Item) {
+  if (id === 'select' || id === 'deselect') return toggle(item, id === 'select');
+  if (id === 'move') return startMove(actedOn(item));
+  if (id === 'delete') return startDelete(actedOn(item));
+  if (id === 'rename') return item.type === 'model' ? startRename(itemRef(item), item.model.name, !item.model.is_dir) : startRename(itemRef(item), item.folder.name, false);
+  if (item.type !== 'model') return;
   if (id === 'info') openInfo(item, null);
   if (id === 'download') saveFile(item.rootId, item.model.path);
-  if (id === 'rename') startRename(itemRef(item), item.model.name, !item.model.is_dir);
-  if (id === 'move') startMove([itemRef(item)]);
-  if (id === 'delete') startDelete([itemRef(item)]);
 }
-const folderMenu = computed<MenuItem[]>(() => [
-  { id: 'rename', label: t('common.rename'), icon: icons.Pencil },
-  { id: 'move', label: t('common.move'), icon: icons.Move },
-  { id: 'delete', label: t('common.delete'), icon: icons.Trash2, danger: true },
-]);
-function onFolderMenu(id: string, item: FolderItem) {
-  if (id === 'rename') startRename(itemRef(item), item.folder.name, false);
-  if (id === 'move') startMove([itemRef(item)]);
-  if (id === 'delete') startDelete([itemRef(item)]);
+
+/** While selecting, a click on an item toggles it rather than opening it; with modifiers it selects. */
+function onFolderClick(item: FolderItem, event?: MouseEvent) {
+  if (event && selectWith(item, event)) return;
+  if (selecting.value && !item.isRoot) return toggle(item, !isSelected(item));
+  openFolder(item);
+}
+function onModelActivate(item: ModelItem, rect: DOMRect | null, event?: MouseEvent | KeyboardEvent) {
+  if (event && selectWith(item, event)) return;
+  if (selecting.value) return toggle(item, !isSelected(item));
+  openInfo(item, rect);
+}
+
+/**
+ * The grid's keyboard, on the item that has the focus (its menu button and checkbox keep their
+ * own keys). Arrows, Home/End and PageUp/PageDown move between items, with Shift selecting the
+ * way; Enter opens even while selecting, Space toggles, Ctrl/Cmd+A selects all, Escape clears,
+ * Delete deletes the selection or the item, Backspace goes up. It listens in the capture phase so
+ * Enter reaches it before the card turns it into a click.
+ */
+function onGridKey(event: KeyboardEvent) {
+  const grid = event.currentTarget as HTMLElement;
+  const cell = (event.target as HTMLElement).closest<HTMLElement>('.model-grid > .cell');
+  if (!cell || event.target !== cell.firstElementChild) return;
+  const cells = Array.from(grid.querySelectorAll<HTMLElement>('.model-grid > .cell'));
+  const index = cells.indexOf(cell);
+  const item = items.value[index];
+  if (!item) return;
+  const handled = () => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  const next = moveFocus(index, event.key, columnsOf(cells), cells.length);
+  if (next !== null && !event.altKey && !event.ctrlKey && !event.metaKey) {
+    handled();
+    (cells[next].firstElementChild as HTMLElement | null)?.focus();
+    const target = items.value[next];
+    if (event.shiftKey && target) {
+      if (!anchor.value) anchor.value = refKey(itemRef(item));
+      selectWith(target, { shiftKey: true });
+    }
+    return;
+  }
+  const whole = item.type === 'folder' && item.isRoot;
+  if (event.key === 'Enter') {
+    handled();
+    if (item.type === 'folder') openFolder(item);
+    else openInfo(item, cell.getBoundingClientRect());
+  } else if (event.key === ' ') {
+    handled();
+    if (!whole) toggle(item, !isSelected(item));
+  } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
+    handled();
+    selectAll();
+  } else if (event.key === 'Escape' && selecting.value) {
+    handled();
+    clearSelection();
+  } else if (event.key === 'Delete') {
+    handled();
+    if (selecting.value) startDelete(selected.value);
+    else if (!whole) startDelete([itemRef(item)]);
+  } else if (event.key === 'Backspace') {
+    handled();
+    goUp();
+  }
 }
 
 function rescan() {
@@ -459,7 +645,7 @@ const kindFor = (model: ModelEntry) => {
 </script>
 
 <template>
-  <div class="library" :class="{ stacked }">
+  <div class="library" :class="{ narrow }">
     <EmptyState
       v-if="roots.isSuccess.value && !roots.data.value?.length"
       :icon="icons.HardDrive"
@@ -471,9 +657,12 @@ const kindFor = (model: ModelEntry) => {
     </EmptyState>
 
     <template v-else>
-      <Transition name="collapse" v-bind="collapseHooks">
-      <div v-show="sideShown" class="side-wrap">
-      <aside class="side">
+      <Transition :name="TRANSITIONS.scrim">
+        <div v-if="drawerOpen" class="scrim" :style="belowHead" @click="sideOpen = false" />
+      </Transition>
+      <!-- As a drawer it slides in from the edge; beside the contents on a wide screen it is simply there. -->
+      <Transition :name="TRANSITIONS.drawer" :css="narrow">
+      <aside v-if="!narrow || sideOpen" class="side" :class="{ overlay: narrow }" :style="narrow ? belowHead : undefined">
         <div class="root-row">
           <SelectField v-model="rootId" :label="t('library.root')" :options="rootOptions" class="root-select" @update:model-value="path = ''" />
           <AppMenu v-if="rootMenu.length" :items="rootMenu" @select="onRootMenu">
@@ -484,61 +673,78 @@ const kindFor = (model: ModelEntry) => {
         <p v-else-if="isCombined" class="type-body-small muted hint">{{ t('library.allFoldersHint') }}</p>
         <p v-if="root && !root.exists" class="type-body-small error">{{ t('library.missing') }}</p>
         <p v-if="missingRoots" class="type-body-small error">{{ t('library.missingRoots', { names: missingRoots }) }}</p>
-        <div class="tree" role="tree">
-          <FolderTree v-if="sideTree" :node="sideTree" :selected="isCombined ? '' : path" @select="onTreeSelect" />
+        <div v-if="isCombined" class="tree" role="tree" :aria-label="t('library.allFolders')">
+          <template v-if="combined.data.value">
+            <FolderTree
+              v-for="entry in combinedTrees"
+              :key="entry.key"
+              :node="entry.node"
+              :root-id="entry.folder.root_id"
+              :label="entry.folder.root_name"
+              :selected="null"
+              :open="false"
+              @select="onTreeSelect($event, entry.folder.root_id)"
+              @drop="(event, dir) => dropInto(event, entry.folder.root_id, dir)"
+            />
+          </template>
+          <div v-else class="tree-skeleton"><Skeleton v-for="i in 6" :key="i" height="28px" shape="full" /></div>
+        </div>
+        <div v-else class="tree" role="tree" :aria-label="root?.name">
+          <FolderTree v-if="tree.data.value" :key="rootId ?? ''" :node="tree.data.value" :selected="path" @select="onTreeSelect" @drop="(event, dir) => dropInto(event, rootId, dir)" />
           <div v-else class="tree-skeleton"><Skeleton v-for="i in 6" :key="i" height="28px" shape="full" /></div>
         </div>
       </aside>
-      </div>
       </Transition>
 
       <section class="main">
         <FileDropZone :label="t('library.dropHere', { folder: path || root?.name || '/' })" :disabled="!canAdd" @files="startUpload">
-          <div class="head">
+          <div ref="head" class="head">
             <div class="crumb-row">
               <IconButton
-                v-if="stacked"
-                :icon="sideOpen ? icons.PanelTopClose : icons.FolderTree"
+                v-if="narrow"
+                :icon="sideOpen ? icons.FolderOpen : icons.Folder"
                 :label="sideOpen ? t('library.hideFolders') : t('library.showFolders')"
                 :tonal="sideOpen"
                 :expanded="sideOpen"
                 class="side-toggle"
                 @click="sideOpen = !sideOpen"
               />
+              <IconButton :icon="icons.ArrowUp" :label="t('library.up')" :disabled="!canGoUp" class="up" @click="goUp" />
               <Breadcrumbs :crumbs="crumbs" @navigate="onCrumb" />
             </div>
             <div class="toolbar">
-              <template v-if="selection.size">
-                <span class="type-label-large">{{ t('library.selected', { n: selection.size }) }}</span>
-                <IconButton :icon="icons.Move" :label="t('common.move')" @click="startMove(selected)" />
-                <IconButton :icon="icons.Trash2" :label="t('common.delete')" @click="startDelete(selected)" />
-                <IconButton :icon="icons.X" :label="t('library.clearSelection')" @click="selection = new Map()" />
+              <template v-if="canAdd">
+                <AppMenu :items="uploadMenu" @select="pickFiles($event === 'folder')">
+                  <template #default="{ toggle }">
+                    <AppButton variant="tonal" :icon="icons.Upload" @click="toggle">{{ t('library.upload') }}</AppButton>
+                  </template>
+                </AppMenu>
+                <AppButton variant="text" :icon="icons.FolderInput" @click="importOpen = true">{{ t('library.import') }}</AppButton>
+                <IconButton :icon="icons.FolderPlus" :label="t('library.newFolder')" @click="folderOpen = true" />
               </template>
-              <template v-else>
-                <template v-if="canAdd">
-                  <AppMenu :items="uploadMenu" @select="pickFiles($event === 'folder')">
-                    <template #default="{ toggle }">
-                      <AppButton variant="tonal" :icon="icons.Upload" @click="toggle">{{ t('library.upload') }}</AppButton>
-                    </template>
-                  </AppMenu>
-                  <AppButton variant="text" :icon="icons.FolderInput" @click="importOpen = true">{{ t('library.import') }}</AppButton>
-                  <IconButton :icon="icons.FolderPlus" :label="t('library.newFolder')" @click="folderOpen = true" />
-                </template>
-                <IconButton :icon="icons.RefreshCw" :label="t('library.rescan')" :spin="m.scan.isPending.value" @click="rescan" />
-                <SelectField v-if="!isCombined" :model-value="kind ?? ''" :label="t('library.filterKind')" :options="kindOptions" class="kind" @update:model-value="kind = $event || null" />
-                <SegmentedButton
-                  v-model="prefs.prefs.libraryView"
-                  :options="[
-                    { value: 'grid', icon: icons.LayoutGrid, ariaLabel: t('library.grid') },
-                    { value: 'list', icon: icons.LayoutList, ariaLabel: t('library.list') },
-                  ]"
-                />
-              </template>
+              <IconButton :icon="icons.RefreshCw" :label="t('library.rescan')" :spin="m.scan.isPending.value" @click="rescan" />
+              <SelectField v-if="!isCombined" :model-value="kind ?? ''" :label="t('library.filterKind')" :options="kindOptions" class="kind" @update:model-value="kind = $event || null" />
+              <SegmentedButton
+                v-model="prefs.prefs.libraryView"
+                :options="[
+                  { value: 'grid', icon: icons.LayoutGrid, ariaLabel: t('library.grid') },
+                  { value: 'list', icon: icons.LayoutList, ariaLabel: t('library.list') },
+                ]"
+              />
             </div>
+            <SelectionBar
+              v-model:keep="keepSelection"
+              :count="selection.size"
+              :total="selectableTotal"
+              @clear="clearSelection"
+              @select-all="selectAll"
+              @move="startMove(selected)"
+              @delete="startDelete(selected)"
+            />
           </div>
 
           <Transition name="shared-axis-x" mode="out-in">
-            <div :key="`${rootId}:${path}:${kind}`" class="content" :style="{ '--axis-dir': direction }">
+            <div :key="`${rootId}:${path}:${kind}`" class="content" :class="{ selecting }" :style="{ '--axis-dir': direction }" @keydown.capture="onGridKey">
               <div v-if="loading" class="skeletons">
                 <div v-for="i in 10" :key="i" class="skeleton-card"><Skeleton height="200px" shape="medium" /><Skeleton width="70%" /></div>
               </div>
@@ -550,8 +756,25 @@ const kindFor = (model: ModelEntry) => {
               </EmptyState>
               <ModelGrid v-else :items="items" :item-key="itemKey" :layout="prefs.prefs.libraryView">
                 <template #default="{ item }">
-                  <button v-if="item.type === 'folder'" type="button" class="folder state-layer" :class="`folder-${prefs.prefs.libraryView}`" @click="openFolder(item)">
-                    <span class="folder-icon"><AppIcon :icon="icons.Folder" :size="24" /></span>
+                  <button
+                    v-if="item.type === 'folder'"
+                    type="button"
+                    class="folder state-layer"
+                    :class="[`folder-${prefs.prefs.libraryView}`, { dropping: dropKey === itemKey(item), checked: isSelected(item) }]"
+                    :draggable="!item.isRoot"
+                    @click="onFolderClick(item, $event)"
+                    @dragstart="onDragStart(item, $event)"
+                    @dragover="onFolderDragOver(item, $event)"
+                    @dragleave="dropKey = null"
+                    @drop="dropInto($event, item.rootId, item.folder.path)"
+                  >
+                    <!-- The folder's icon gives way to its checkbox on hover and while selecting. -->
+                    <span class="folder-icon" :class="{ checkable: !item.isRoot }">
+                      <AppIcon :icon="icons.Folder" :size="24" class="folder-glyph" />
+                      <span v-if="!item.isRoot" class="folder-check" @click.stop>
+                        <Checkbox :model-value="isSelected(item)" dense :label="t('library.select')" @update:model-value="toggle(item, $event)" />
+                      </span>
+                    </span>
                     <span class="folder-text">
                       <span class="type-title-small folder-name">{{ item.label }}</span>
                       <span v-if="item.folder.folder_kind || item.rootName" class="type-body-small muted folder-meta">
@@ -559,7 +782,7 @@ const kindFor = (model: ModelEntry) => {
                       </span>
                     </span>
                     <!-- A root cannot be renamed, moved or deleted from here. -->
-                    <AppMenu v-if="!item.isRoot" :items="folderMenu" @select="onFolderMenu($event, item)">
+                    <AppMenu v-if="!item.isRoot" :items="itemMenu(item)" @select="onItemMenu($event, item)">
                       <template #default="{ toggle }"><IconButton :icon="icons.MoreVertical" :label="t('common.more')" @click.stop="toggle" /></template>
                     </AppMenu>
                   </button>
@@ -575,7 +798,10 @@ const kindFor = (model: ModelEntry) => {
                     :warning="warningFor(item.model)"
                     :pending="item.model.is_model && !item.model.detection && (entries.data.value?.pending_detection ?? 0) > 0"
                     :selected="isSelected(item)"
-                    @activate="openInfo(item, $event)"
+                    :selecting="selecting"
+                    draggable="true"
+                    @activate="(rect: DOMRect | null, event?: MouseEvent | KeyboardEvent) => onModelActivate(item, rect, event)"
+                    @dragstart="onDragStart(item, $event)"
                   >
                     <template #select>
                       <Checkbox
@@ -586,7 +812,7 @@ const kindFor = (model: ModelEntry) => {
                       />
                     </template>
                     <template #actions>
-                      <AppMenu :items="modelMenu(item.model)" @select="onModelMenu($event, item)">
+                      <AppMenu :items="itemMenu(item)" @select="onItemMenu($event, item)">
                         <template #default="{ toggle: open }"><IconButton :icon="icons.MoreVertical" :label="t('common.more')" @click="open" /></template>
                       </AppMenu>
                     </template>
@@ -645,20 +871,24 @@ const kindFor = (model: ModelEntry) => {
 
 <style scoped>
 /* The folder side widens with the window, so long folder names fit on a wide screen. */
-.library { display: grid; grid-template-columns: clamp(280px, 20vw, 480px) minmax(0, 1fr); height: 100%; }
+.library { --side-width: clamp(280px, 20vw, 480px); position: relative; display: grid; grid-template-columns: var(--side-width) minmax(0, 1fr); height: 100%; }
 .no-roots { grid-column: 1 / -1; align-self: center; }
-.side-wrap { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--md-sys-color-outline-variant); }
-/* The padding lives inside the wrapper, whose height the collapse transition animates. */
-.side { flex: 1; display: flex; flex-direction: column; gap: var(--app-space-2); padding: var(--app-space-4); min-height: 0; }
+.side { display: flex; flex-direction: column; gap: var(--app-space-2); padding: var(--app-space-4); min-height: 0; border-right: 1px solid var(--md-sys-color-outline-variant); }
+/* The drawer and its scrim start below the toolbar (``top`` is its measured height). */
+.side.overlay {
+  position: absolute; left: 0; bottom: 0; z-index: 7; width: min(var(--side-width), 90%); border-right: 0;
+  background: var(--md-sys-color-surface-container-low); box-shadow: var(--app-elevation-2); border-top-right-radius: var(--md-sys-shape-corner-large);
+}
+.scrim { position: absolute; left: 0; right: 0; bottom: 0; z-index: 6; background: color-mix(in srgb, var(--md-sys-color-scrim) 32%, transparent); }
 .root-row { display: flex; align-items: center; gap: var(--app-space-1); }
 .root-select { flex: 1; min-width: 0; }
 .hint { margin: 0; }
 .error { color: var(--md-sys-color-error); margin: 0; }
-.tree { flex: 1; overflow: auto; margin: 0 calc(-1 * var(--app-space-2)); }
+.tree { flex: 1; min-height: 0; overflow: auto; margin: 0 calc(-1 * var(--app-space-2)); }
 .tree-skeleton { display: flex; flex-direction: column; gap: var(--app-space-2); padding: var(--app-space-2); }
 .main { min-width: 0; overflow: auto; }
 .crumb-row { display: flex; align-items: center; gap: var(--app-space-1); min-width: 0; }
-.side-toggle { flex: none; }
+.side-toggle, .up { flex: none; }
 .head { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--app-space-2); padding: var(--app-space-3) var(--app-space-4); background: var(--md-sys-color-surface-container-low); }
 .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--app-space-2); }
 .kind { min-width: 150px; }
@@ -669,16 +899,24 @@ const kindFor = (model: ModelEntry) => {
   display: flex; align-items: center; gap: var(--app-space-3); width: 100%; padding: var(--app-space-2) var(--app-space-1) var(--app-space-2) var(--app-space-3);
   border: 0; border-radius: var(--md-sys-shape-corner-medium); background: var(--md-sys-color-surface-container); color: var(--md-sys-color-on-surface); cursor: pointer; text-align: left; font: inherit;
 }
+.folder.dropping { outline: 2px solid var(--md-sys-color-primary); outline-offset: -2px; }
 .folder-grid { min-height: 64px; }
 .folder-list { min-height: 56px; }
+.folder.checked { outline: 3px solid var(--md-sys-color-primary); outline-offset: -3px; }
 .folder-icon { display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--md-sys-shape-corner-small); background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); flex: none; }
+/* The icon and the checkbox share one place; the checkbox takes it on hover, while selecting, or once checked. */
+.folder-glyph, .folder-check { grid-area: 1 / 1; transition: opacity var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard); }
+.folder-check { display: grid; place-items: center; opacity: 0; pointer-events: none; }
+.selecting .folder-check, .folder.checked .folder-check { opacity: 1; pointer-events: auto; }
+.selecting .checkable .folder-glyph, .folder.checked .folder-glyph { opacity: 0; }
+@media (hover: hover) {
+  .folder:hover .folder-check, .folder:focus-visible .folder-check { opacity: 1; pointer-events: auto; }
+  .folder:hover .checkable .folder-glyph, .folder:focus-visible .checkable .folder-glyph { opacity: 0; }
+}
 .folder-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .folder-name, .folder-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .select-box { padding: 2px; border-radius: var(--md-sys-shape-corner-small); background: color-mix(in srgb, var(--md-sys-color-surface) 70%, transparent); }
 .form { display: flex; flex-direction: column; gap: var(--app-space-3); }
-/* Folders above the contents, and only while opened. */
-.stacked { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
-.stacked .side-wrap { grid-row: 1; border-right: 0; border-bottom: 1px solid var(--md-sys-color-outline-variant); }
-.stacked .main { grid-row: 2; }
-.stacked .tree { max-height: 40vh; }
+/* The contents take the whole width; the folders come over them as a drawer. */
+.narrow { grid-template-columns: minmax(0, 1fr); }
 </style>

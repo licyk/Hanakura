@@ -60,6 +60,11 @@
   --md-sys-state-dragged-state-layer-opacity: 0.16;
   --app-disabled-content-opacity: 0.38;
   --app-disabled-container-opacity: 0.12;
+  /* An example in an empty field. Material draws it in on-surface-variant, too close to typed text
+     (on-surface) to tell apart, so an example read as a value already entered. The outline role
+     stays readable and follows the contrast setting. Colour only: the text field's input lives in
+     its shadow root, and an oblique face would suit no CJK font anyway. */
+  --app-color-placeholder: var(--md-sys-color-outline);
 
   /* Spacing: 4px base unit */
   --app-space-1: 4px; --app-space-2: 8px; --app-space-3: 12px; --app-space-4: 16px;

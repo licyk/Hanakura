@@ -20,16 +20,19 @@ defineProps<{
   fallbackIcon?: Component;
   pending?: boolean;
   selected?: boolean;
+  /** Something in the list is selected: every card shows its checkbox, not only on hover. */
+  selecting?: boolean;
   layout?: 'grid' | 'list';
 }>();
-const emit = defineEmits<{ activate: [DOMRect | null] }>();
+/** ``activate`` carries the card's rectangle, for a dialog to grow from, and the event, for its modifier keys. */
+const emit = defineEmits<{ activate: [DOMRect | null, (MouseEvent | KeyboardEvent)?] }>();
 const card = ref<InstanceType<typeof AppCard> | null>(null);
-const onActivate = () => emit('activate', card.value?.el?.getBoundingClientRect() ?? null);
+const onActivate = (event: MouseEvent | KeyboardEvent) => emit('activate', card.value?.el?.getBoundingClientRect() ?? null, event);
 defineExpose({ rect: () => card.value?.el?.getBoundingClientRect() ?? null });
 </script>
 
 <template>
-  <AppCard ref="card" interactive :selected="selected" class="model-card" :class="layout ?? 'grid'" @activate="onActivate">
+  <AppCard ref="card" interactive :selected="selected" class="model-card" :class="[layout ?? 'grid', { selecting, checked: selected }]" @activate="onActivate">
     <!-- In a row the checkbox leads; over a 72px thumbnail it would cover the picture. -->
     <div v-if="$slots.select && layout === 'list'" class="select-lead" @click.stop><slot name="select" /></div>
     <div class="media">
@@ -56,6 +59,12 @@ defineExpose({ rect: () => card.value?.el?.getBoundingClientRect() ?? null });
 .model-card { height: 100%; }
 .media { position: relative; }
 .select-slot { position: absolute; top: var(--app-space-1); left: var(--app-space-1); }
+/* With a mouse, a picture's checkbox comes on hover, and on every card once selecting: it would
+   otherwise cover every preview. A touch screen has no hover, so there it always shows. */
+@media (hover: hover) {
+  .select-slot { opacity: 0; transition: opacity var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard); }
+  .model-card:hover .select-slot, .model-card:focus-within .select-slot, .selecting .select-slot, .checked .select-slot { opacity: 1; }
+}
 /* min-width: 0 is what keeps the actions on the card: a long file name is one unbreakable word,
    and without it this row refuses to shrink below that word and pushes the menu out of the card. */
 .body { display: flex; align-items: flex-start; gap: var(--app-space-1); padding: var(--app-space-3) var(--app-space-1) var(--app-space-2) var(--app-space-3); flex: 1; min-width: 0; }

@@ -5,6 +5,7 @@ export const TRANSITIONS = {
   sharedAxisX: 'shared-axis-x',
   container: 'container',
   sheet: 'sheet',
+  drawer: 'drawer',
   scrim: 'scrim',
   list: 'list',
   collapse: 'collapse',

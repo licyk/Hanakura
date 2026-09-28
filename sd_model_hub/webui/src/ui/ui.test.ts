@@ -65,6 +65,14 @@ describe('ui components', () => {
     expect(css).toMatch(/\.path-text \{[^}]*direction: rtl/);
   });
 
+  it('draws an example in an empty field apart from typed text', () => {
+    // Material's own placeholder colour is too close to the typed text's: an example read as a value.
+    const tokens = readFileSync(join(process.cwd(), 'src/theme/tokens.css'), 'utf8');
+    expect(tokens).toMatch(/--app-color-placeholder: var\(--md-sys-color-outline\)/);
+    expect(readFileSync(join(process.cwd(), 'src/ui/TextField.vue'), 'utf8')).toMatch(/--md-outlined-text-field-input-text-placeholder-color: var\(--app-color-placeholder\)/);
+    expect(readFileSync(join(process.cwd(), 'src/ui/SearchField.vue'), 'utf8')).toMatch(/::placeholder \{ color: var\(--app-color-placeholder\)/);
+  });
+
   it('no path is set right-to-left outside PathText', () => {
     const offenders = readdirSync(join(process.cwd(), 'src'), { recursive: true, encoding: 'utf8' })
       .filter((f) => f.endsWith('.vue') && !f.endsWith('PathText.vue'))

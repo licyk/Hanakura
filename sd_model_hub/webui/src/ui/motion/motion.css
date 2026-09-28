@@ -50,6 +50,12 @@
 .sheet-enter-from,
 .sheet-leave-to { transform: translateX(100%); }
 
+/* drawer: a panel slides in from the start edge, over the content (the Library's folders on a narrow screen) */
+.drawer-enter-active { transition: transform var(--md-sys-motion-duration-medium3) var(--md-sys-motion-easing-emphasized-decelerate); }
+.drawer-leave-active { transition: transform var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-emphasized-accelerate); }
+.drawer-enter-from,
+.drawer-leave-to { transform: translateX(-100%); }
+
 .scrim-enter-active,
 .scrim-leave-active { transition: opacity var(--md-sys-motion-duration-medium3) var(--md-sys-motion-easing-standard); }
 .scrim-enter-from,

@@ -38,6 +38,7 @@ const blurred = computed(() => sensitive.value && settings.data.value?.content.n
       loading="lazy"
       decoding="async"
       referrerpolicy="no-referrer"
+      draggable="false"
       @load="state = 'loaded'"
       @error="state = 'error'"
     />

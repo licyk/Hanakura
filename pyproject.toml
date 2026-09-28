@@ -27,7 +27,7 @@ dependencies = [
     "uvicorn",
     # uvicorn speaks WebSocket only when one of these is installed. Without it the socket falls
     # back to long polling, which works but is slower and noisier.
-    "websockets>=12",
+    "websockets",
     "python-socketio",
     "pydantic",
     "httpx",

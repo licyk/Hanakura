@@ -472,13 +472,40 @@ hidden below 900 px the open state must keep the sized track **first**, because 
 is out of the grid and the pane is then the first item. Picking another repository while the pane
 is open is a `fade-through` on the pane's content, which is keyed by repository id.
 
-**The Library's folder panel folds away when narrow.** Below 840 px (a phone, a tablet held
-upright) the panel would stack above the contents and leave them a sliver, so it starts closed.
-A folder-tree button before the breadcrumbs opens and closes it (`aria-expanded` through
-`IconButton`'s `expanded`), picking a folder in it closes it again, and narrowing the window
-closes it. The layout follows `useMediaQuery` through the `stacked` class, not a CSS media query,
-so the layout and the button cannot disagree. The panel's padding sits inside `.side-wrap`,
-because the collapse transition animates that wrapper's height.
+**The Library's folder panel** follows Hanaikada's Browse panel. Below 840 px (a phone, a tablet
+held upright) it is a `drawer` over the contents, closed at first: it opens below the toolbar,
+whose height is measured (`ui/useElementHeight`) because it wraps, so the folder button before
+the breadcrumbs (`aria-expanded` through `IconButton`'s `expanded`) can always close it again; a
+tap on the scrim, Escape, a picked folder or narrowing the window closes it too. The layout
+follows `useMediaQuery` through the `narrow` class, not a CSS media query, so the layout and the
+button cannot disagree. In "All folders" each entry is a `FolderTree` of its own with its root's
+name as a label; given a `rootId`, a node takes its subfolders from that root's tree, fetched only
+once it is first opened, and a folder picked in it opens inside that root. An up button before the
+breadcrumbs leads to the parent folder, and from a root's top to "All folders" when it is offered.
+
+**Selection mode** follows Hanaikada's. While anything is selected, `components/SelectionBar.vue`
+slides in below the toolbar (`collapse`, so the contents slide down rather than jump) with clear,
+select all, move, delete and "Keep selection"; the toolbar itself never changes. Every card then
+shows its checkbox (with a mouse it otherwise shows on hover; a folder's replaces its icon), a
+click toggles an item instead of opening it, and the menu of an item that is part of a larger
+selection offers only what applies to all of it. A kept selection survives opening other folders,
+since each entry carries its root; a whole root is never selectable.
+
+The grid's keyboard is Hanaikada's too (`components/gridKeyboard.ts`), on real focus rather than
+a drawn one: the cards and folders are focusable already, so the keys act on the item holding the
+focus and never on its menu button or checkbox. Arrows, Home/End and PageUp/PageDown move (columns
+are counted from the laid-out first row), Shift selects the way, Enter opens even while
+selecting, Space toggles, Ctrl/Cmd+A selects all, Escape clears, Delete deletes the selection or
+the item, Backspace goes up. Ctrl/Cmd-click toggles and Shift-click selects a range from the last
+toggled item, replacing the selection unless Ctrl/Cmd is held or the selection is kept. The
+listener is on the capture phase, because a card turns Enter into a click before it bubbles.
+
+**Dragging moves.** A model card or a folder dragged onto a folder — in the grid or any tree row —
+moves there through the ordinary move operation, taking the selection along when the dragged item
+is part of it (`components/libraryDrag.ts`). The payload has a type of its own, so the upload drop
+zone, which takes only `Files`, ignores it; preview images are not draggable, or a drag starting
+on the picture would carry the image instead. A whole root is never dragged, but is a target, and
+a folder is never dropped into itself.
 
 **Dialogs on a phone.** `AppDialog` becomes a bottom sheet below 600 px, with the phone's own
 gutters and `env(safe-area-inset-bottom)` under the last row. Its centring grid declares
@@ -493,6 +520,11 @@ the sheet itself takes the gesture.
 `direction: rtl`, but a leading `/` has no direction of its own, so in a right-to-left line it is
 drawn at the far end: `/root/model` read `root/model/`. PathText isolates the path as
 left-to-right inside that line; `ui.test.ts` fails on `direction: rtl` anywhere else.
+
+**An example in an empty field is drawn in `--app-color-placeholder`** (the outline role), not
+Material's on-surface-variant, which sat so close to typed text that an example read as a value
+already entered. Only the colour changes: the text field's input is in its shadow root, and an
+oblique face would not suit CJK text.
 
 **The Hubs model card opens expanded** for every repository shown, even after it was collapsed
 for the last one: it is what the repository is about.
