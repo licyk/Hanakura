@@ -1,6 +1,6 @@
 <div align="center">
 
-# Hanakura
+# Hanakura 花蔵
 
 <p align="center">
   <a href="https://github.com/licyk/Hanakura/stargazers">
