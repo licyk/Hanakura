@@ -3,9 +3,9 @@
 import httpx
 import pytest
 
-from sd_model_hub.core.net.http import HttpClientProvider
-from sd_model_hub.core.settings import SettingsService
-from sd_model_hub.version import VERSION
+from hanakura.core.net.http import HttpClientProvider
+from hanakura.core.settings import SettingsService
+from hanakura.version import VERSION
 
 
 @pytest.mark.parametrize("proxy", [None, "", "http://127.0.0.1:8080"])
@@ -72,6 +72,6 @@ def test_client_preserves_transport_and_redirects(tmp_path):
     try:
         assert provider.get().get("https://example.test/start").text == "ok"
         assert [request.url.path for request in seen] == ["/start", "/end"]
-        assert all(request.headers["User-Agent"] == f"sd-model-hub/{VERSION}" for request in seen)
+        assert all(request.headers["User-Agent"] == f"hanakura/{VERSION}" for request in seen)
     finally:
         provider.close()

@@ -6,10 +6,10 @@ import sys
 
 import pytest
 
-from sd_model_hub import ModelHubServer, ModelRoot
-from sd_model_hub.core.downloads.models import DownloadCreate
-from sd_model_hub.core.errors import InvalidPathError, NotFoundError
-from sd_model_hub.core.library.models import RootCreate, RootUpdate
+from hanakura import HanakuraServer, ModelRoot
+from hanakura.core.downloads.models import DownloadCreate
+from hanakura.core.errors import InvalidPathError, NotFoundError
+from hanakura.core.library.models import RootCreate, RootUpdate
 from tests.conftest import LORA_SD1, write_safetensors
 
 
@@ -111,7 +111,7 @@ def test_destination_follows_a_linked_folder_and_refuses_it_when_links_are_off(s
 
 
 def test_seeded_host_root_keeps_id_and_hint(tmp_path, root_dir):
-    hub = ModelHubServer(data_dir=tmp_path / "hub", model_roots=[ModelRoot(root_dir, id="loras", kind="lora")])
+    hub = HanakuraServer(data_dir=tmp_path / "hub", model_roots=[ModelRoot(root_dir, id="loras", kind="lora")])
     services = hub._build()
     try:
         root = services.library.list_roots()[0]
@@ -121,16 +121,16 @@ def test_seeded_host_root_keeps_id_and_hint(tmp_path, root_dir):
 
 
 def test_host_root_id_survives_python_hash_seed(root_dir):
-    code = "from sd_model_hub import ModelRoot; import sys; print(ModelRoot(sys.argv[1]).to_settings()['id'])"
+    code = "from hanakura import ModelRoot; import sys; print(ModelRoot(sys.argv[1]).to_settings()['id'])"
     ids = [subprocess.check_output([sys.executable, "-c", code, str(root_dir)], env={**os.environ, "PYTHONHASHSEED": seed}, text=True).strip() for seed in ("1", "2")]
     assert ids[0] == ids[1] == ModelRoot(root_dir).to_settings()["id"]
 
 
 def test_explicit_empty_locked_roots_override_saved_roots(tmp_path, root_dir):
     data = tmp_path / "hub"
-    hub = ModelHubServer(data_dir=data, model_roots=[root_dir])
+    hub = HanakuraServer(data_dir=data, model_roots=[root_dir])
     hub._build().close()
-    empty = ModelHubServer(data_dir=data, model_roots=[], lock_model_roots=True)
+    empty = HanakuraServer(data_dir=data, model_roots=[], lock_model_roots=True)
     services = empty._build()
     try:
         assert services.library.list_roots() == []

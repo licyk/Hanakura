@@ -1,10 +1,10 @@
 import httpx
 import pytest
 
-from sd_model_hub.core.context import build_services
-from sd_model_hub.core.errors import AuthRequiredError, RateLimitedError, SourceError
-from sd_model_hub.core.hubs.registry import parse_repo_ref
-from sd_model_hub.core.sources.models import SearchQuery
+from hanakura.core.context import build_services
+from hanakura.core.errors import AuthRequiredError, RateLimitedError, SourceError
+from hanakura.core.hubs.registry import parse_repo_ref
+from hanakura.core.sources.models import SearchQuery
 from tests.core.test_downloads import CIVITAI_MODEL
 
 
@@ -149,7 +149,7 @@ def test_huggingface_search_cursor_and_repo(make):
         return httpx.Response(404)
 
     s = make(handler)
-    from sd_model_hub.core.hubs.models import HubQuery
+    from hanakura.core.hubs.models import HubQuery
 
     page = s.hubs.search("huggingface", HubQuery(query="x"))
     assert page.items[0].id == "o/r" and page.next_cursor == "https://huggingface.co/api/models?cursor=xyz"
@@ -159,7 +159,7 @@ def test_huggingface_search_cursor_and_repo(make):
 
 @pytest.mark.parametrize("record", [{}, {"id": None}, {"id": ""}, {"id": 123}])
 def test_huggingface_rejects_missing_or_invalid_repo_id(make, record):
-    from sd_model_hub.core.hubs.models import HubQuery
+    from hanakura.core.hubs.models import HubQuery
 
     s = make(lambda request: httpx.Response(200, json=[record]))
     with pytest.raises(SourceError, match="without a valid id"):
@@ -167,7 +167,7 @@ def test_huggingface_rejects_missing_or_invalid_repo_id(make, record):
 
 
 def test_huggingface_accepts_model_id_alias(make):
-    from sd_model_hub.core.hubs.models import HubQuery
+    from hanakura.core.hubs.models import HubQuery
 
     s = make(lambda request: httpx.Response(200, json=[{"modelId": "owner/repo"}]))
     repo = s.hubs.search("huggingface", HubQuery()).items[0]
@@ -190,7 +190,7 @@ def test_modelscope_parsing(make):
         return httpx.Response(404)
 
     s = make(handler)
-    from sd_model_hub.core.hubs.models import HubQuery
+    from hanakura.core.hubs.models import HubQuery
 
     page = s.hubs.search("modelscope", HubQuery(query="b"))
     assert page.items[0].name == "B" and page.next_cursor == "2"

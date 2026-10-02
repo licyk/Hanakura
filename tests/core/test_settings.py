@@ -1,7 +1,7 @@
 import pytest
 
-from sd_model_hub.core.errors import ValidationError
-from sd_model_hub.core.settings import SettingsService
+from hanakura.core.errors import ValidationError
+from hanakura.core.settings import SettingsService
 
 
 def test_defaults_and_save(tmp_path):
@@ -32,12 +32,12 @@ def test_token_cleared_with_null_and_kept_when_omitted(tmp_path):
 
 
 def test_env_overrides_file_but_is_not_saved(tmp_path):
-    s = SettingsService(data_dir=tmp_path, environ={"SD_MODEL_HUB_SERVER__PORT": "8123", "SD_MODEL_HUB_CONTENT__NSFW_MODE": "hide"})
+    s = SettingsService(data_dir=tmp_path, environ={"HANAKURA_SERVER__PORT": "8123", "HANAKURA_CONTENT__NSFW_MODE": "hide"})
     assert s.settings.server.port == 8123
     assert s.settings.content.nsfw_mode == "hide"
     s.update({"network": {"timeout": 5}})
     assert "8123" not in s.path.read_text()
-    assert s.view().env_overrides == ["SD_MODEL_HUB_CONTENT__NSFW_MODE", "SD_MODEL_HUB_SERVER__PORT"]
+    assert s.view().env_overrides == ["HANAKURA_CONTENT__NSFW_MODE", "HANAKURA_SERVER__PORT"]
 
 
 def test_pinned_settings_are_named_in_the_view(tmp_path):

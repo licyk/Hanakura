@@ -5,8 +5,8 @@ import socket
 
 import pytest
 
-from sd_model_hub.core.net.ports import PortUnavailableError, bind_first_free_port
-from sd_model_hub.core.net.runtime_file import read_runtime_file, remove_runtime_file, write_runtime_file
+from hanakura.core.net.ports import PortUnavailableError, bind_first_free_port
+from hanakura.core.net.runtime_file import read_runtime_file, remove_runtime_file, write_runtime_file
 
 
 def _free_port() -> int:

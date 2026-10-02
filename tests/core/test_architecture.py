@@ -1,12 +1,12 @@
-"""sd_model_hub.core must not import any web or CLI framework (plan section 2.1)."""
+"""hanakura.core must not import any web or CLI framework (plan section 2.1)."""
 
 import ast
 from pathlib import Path
 
-import sd_model_hub.core
+import hanakura.core
 
 FORBIDDEN = {"fastapi", "starlette", "typer", "click", "socketio", "uvicorn", "rich"}
-CORE_DIR = Path(next(iter(sd_model_hub.core.__path__)))
+CORE_DIR = Path(next(iter(hanakura.core.__path__)))
 
 
 def _imports(path: Path) -> set[str]:
@@ -32,4 +32,4 @@ def test_core_imports_no_framework():
 def test_core_does_not_import_api_or_cli():
     for path in CORE_DIR.rglob("*.py"):
         text = path.read_text(encoding="utf-8")
-        assert "sd_model_hub.api" not in text and "sd_model_hub.cli" not in text, path
+        assert "hanakura.api" not in text and "hanakura.cli" not in text, path

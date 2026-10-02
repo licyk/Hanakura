@@ -7,8 +7,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sd_model_hub.api.app import create_app
-from sd_model_hub.core.context import build_services
+from hanakura.api.app import create_app
+from hanakura.core.context import build_services
 
 
 def main() -> None:

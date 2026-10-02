@@ -6,9 +6,9 @@ from datetime import datetime, timezone
 import pytest
 from pydantic import BaseModel
 
-from sd_model_hub.cli.output import to_jsonable
-from sd_model_hub.core.downloads.models import DownloadJob
-from sd_model_hub.core.events.models import DownloadQueuedEvent
+from hanakura.cli.output import to_jsonable
+from hanakura.core.downloads.models import DownloadJob
+from hanakura.core.events.models import DownloadQueuedEvent
 
 
 @pytest.mark.parametrize("runner,can_pause", [("http", True), ("huggingface", False), ("modelscope", False)])

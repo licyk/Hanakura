@@ -15,10 +15,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sd_model_hub.core.db import Database
-from sd_model_hub.core.detection import DetectionService
-from sd_model_hub.core.detection.header import read_header
-from sd_model_hub.core.detection.service import METADATA_KEYS_KEPT
+from hanakura.core.db import Database
+from hanakura.core.detection import DetectionService
+from hanakura.core.detection.header import read_header
+from hanakura.core.detection.service import METADATA_KEYS_KEPT
 
 FIXTURE_DIR = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "headers"
 

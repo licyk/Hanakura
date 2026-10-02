@@ -1,4 +1,4 @@
-"""Embedding SD Model Hub in another application: ModelHubServer and the route prefix."""
+"""Embedding Hanakura in another application: HanakuraServer and the route prefix."""
 
 import socket
 import urllib.error
@@ -8,11 +8,11 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from sd_model_hub import ModelHubServer, ModelRoot
-from sd_model_hub.api.app import create_app, normalize_prefix
-from sd_model_hub.core.context import build_services
-from sd_model_hub.core.errors import ConflictError, ValidationError
-from sd_model_hub.core.library.models import RootCreate, RootUpdate
+from hanakura import HanakuraServer, ModelRoot
+from hanakura.api.app import create_app, normalize_prefix
+from hanakura.core.context import build_services
+from hanakura.core.errors import ConflictError, ValidationError
+from hanakura.core.library.models import RootCreate, RootUpdate
 from tests.conftest import LORA_SDXL, write_safetensors
 
 
@@ -35,7 +35,7 @@ def models(tmp_path: Path) -> Path:
 
 
 def test_start_returns_a_url_and_serves(tmp_path, models):
-    hub = ModelHubServer(data_dir=tmp_path / "data", model_roots=[ModelRoot(models, layout="comfyui", name="Models")], port=0)
+    hub = HanakuraServer(data_dir=tmp_path / "data", model_roots=[ModelRoot(models, layout="comfyui", name="Models")], port=0)
     url = hub.start()
     try:
         assert url.startswith("http://127.0.0.1:") and hub.running
@@ -50,7 +50,7 @@ def test_start_returns_a_url_and_serves(tmp_path, models):
 
 
 def test_stop_releases_the_port_and_is_repeatable(tmp_path):
-    hub = ModelHubServer(data_dir=tmp_path / "data", port=0)
+    hub = HanakuraServer(data_dir=tmp_path / "data", port=0)
     url = hub.start()
     port = hub.port
     hub.stop()
@@ -64,8 +64,8 @@ def test_stop_releases_the_port_and_is_repeatable(tmp_path):
 
 
 def test_two_servers_pick_different_free_ports(tmp_path):
-    first = ModelHubServer(data_dir=tmp_path / "a", port=0)
-    second = ModelHubServer(data_dir=tmp_path / "b", port=0)
+    first = HanakuraServer(data_dir=tmp_path / "a", port=0)
+    second = HanakuraServer(data_dir=tmp_path / "b", port=0)
     try:
         first.start()
         second.start()
@@ -83,30 +83,30 @@ def test_a_taken_port_moves_up_unless_strict(tmp_path):
         taken.listen()
         port = taken.getsockname()[1]
 
-        moved = ModelHubServer(data_dir=tmp_path / "a", port=port)
+        moved = HanakuraServer(data_dir=tmp_path / "a", port=port)
         try:
             moved.start()
             assert moved.port != port
         finally:
             moved.stop()
 
-        strict = ModelHubServer(data_dir=tmp_path / "b", port=port, strict_port=True)
+        strict = HanakuraServer(data_dir=tmp_path / "b", port=port, strict_port=True)
         with pytest.raises(Exception, match="strict|unavailable"):
             strict.start()
         strict.stop()
 
 
 def test_context_manager(tmp_path):
-    with ModelHubServer(data_dir=tmp_path / "data", port=0) as hub:
+    with HanakuraServer(data_dir=tmp_path / "data", port=0) as hub:
         assert get(f"{hub.url}/api/v1/app/version")[0] == 200
     assert not hub.running
 
 
 def test_the_settings_file_can_live_anywhere(tmp_path, models):
     """The host application chooses where the settings file is, apart from the data folder."""
-    config = tmp_path / "host-config" / "model-hub.toml"
+    config = tmp_path / "host-config" / "hanakura.toml"
     config.parent.mkdir(parents=True)
-    hub = ModelHubServer(data_dir=tmp_path / "data", model_roots=[models], port=0, settings_path=config)
+    hub = HanakuraServer(data_dir=tmp_path / "data", model_roots=[models], port=0, settings_path=config)
     try:
         hub.start()
         assert hub.services is not None
@@ -114,7 +114,7 @@ def test_the_settings_file_can_live_anywhere(tmp_path, models):
         assert config.exists(), "the seeded folder was written to the chosen config file"
         assert "model_roots" in config.read_text()
         # The database and caches still live in the data folder.
-        assert (tmp_path / "data" / "sd-model-hub.db").exists()
+        assert (tmp_path / "data" / "hanakura.db").exists()
         assert not (tmp_path / "data" / "settings.toml").exists()
     finally:
         hub.stop()
@@ -123,7 +123,7 @@ def test_the_settings_file_can_live_anywhere(tmp_path, models):
 def test_an_existing_settings_file_is_read(tmp_path):
     config = tmp_path / "prepared.toml"
     config.write_text("[downloads]\nsave_preview = false\n[network]\nmax_retries = 7\n")
-    hub = ModelHubServer(data_dir=tmp_path / "data", settings_path=config, port=0)
+    hub = HanakuraServer(data_dir=tmp_path / "data", settings_path=config, port=0)
     try:
         hub.start()
         settings = hub.services.settings.settings
@@ -133,7 +133,7 @@ def test_an_existing_settings_file_is_read(tmp_path):
 
 
 def test_pinned_settings_cannot_be_changed(tmp_path):
-    hub = ModelHubServer(data_dir=tmp_path / "data", port=0, settings={"downloads": {"verify_hash": False}, "content": {"nsfw_mode": "hide"}})
+    hub = HanakuraServer(data_dir=tmp_path / "data", port=0, settings={"downloads": {"verify_hash": False}, "content": {"nsfw_mode": "hide"}})
     try:
         hub.start()
         services = hub.services
@@ -148,7 +148,7 @@ def test_pinned_settings_cannot_be_changed(tmp_path):
 
 @pytest.mark.parametrize("value", [True, False])
 def test_combined_view_can_be_pinned(tmp_path, value):
-    hub = ModelHubServer(data_dir=tmp_path / "data", port=0, combined_view=value, settings={"library": {"show_all_files": True}})
+    hub = HanakuraServer(data_dir=tmp_path / "data", port=0, combined_view=value, settings={"library": {"show_all_files": True}})
     services = hub._build()
     try:
         services.settings.update({"library": {"combined_view": not value}})
@@ -161,7 +161,7 @@ def test_combined_view_can_be_pinned(tmp_path, value):
 
 
 def test_combined_view_is_left_to_the_user_by_default(tmp_path):
-    services = ModelHubServer(data_dir=tmp_path / "data", port=0)._build()
+    services = HanakuraServer(data_dir=tmp_path / "data", port=0)._build()
     try:
         assert services.settings.settings.library.combined_view is False
         services.settings.update({"library": {"combined_view": True}})
@@ -172,14 +172,14 @@ def test_combined_view_is_left_to_the_user_by_default(tmp_path):
 
 def test_the_combined_view_id_cannot_be_a_host_root(tmp_path, models):
     with pytest.raises(ValidationError):
-        ModelHubServer(data_dir=tmp_path / "data", model_roots=[ModelRoot(models, id="*")], lock_model_roots=True)
+        HanakuraServer(data_dir=tmp_path / "data", model_roots=[ModelRoot(models, id="*")], lock_model_roots=True)
 
 
 # -- model folders -------------------------------------------------------------
 
 
 def test_roots_are_seeded_with_their_layout(tmp_path, models):
-    hub = ModelHubServer(data_dir=tmp_path / "data", model_roots=[ModelRoot(models, layout="comfyui", name="Mine")], port=0)
+    hub = HanakuraServer(data_dir=tmp_path / "data", model_roots=[ModelRoot(models, layout="comfyui", name="Mine")], port=0)
     try:
         hub.start()
         roots = hub.services.library.list_roots()
@@ -194,7 +194,7 @@ def test_roots_are_seeded_with_their_layout(tmp_path, models):
 
 
 def test_locked_roots_cannot_be_changed(tmp_path, models):
-    hub = ModelHubServer(data_dir=tmp_path / "data", model_roots=[ModelRoot(models, layout="sd-webui")], lock_model_roots=True, port=0)
+    hub = HanakuraServer(data_dir=tmp_path / "data", model_roots=[ModelRoot(models, layout="sd-webui")], lock_model_roots=True, port=0)
     try:
         url = hub.start()
         library = hub.services.library
@@ -239,12 +239,12 @@ def test_prefix_is_normalized(given, expected):
 
 def test_everything_moves_under_the_prefix(tmp_path, models):
     services = build_services(data_dir=tmp_path / "data", environ={})
-    app = create_app(services, bound_host="127.0.0.1", start_downloads=False, serve_ui=False, api_prefix="/model-hub")
+    app = create_app(services, bound_host="127.0.0.1", start_downloads=False, serve_ui=False, api_prefix="/hanakura")
     try:
         with TestClient(app, base_url="http://localhost") as client:
-            assert client.get("/model-hub/api/v1/app/health").status_code == 200
-            assert client.get("/model-hub/openapi.json").status_code == 200
-            socket_reply = client.get("/model-hub/ws/socket.io/", params={"EIO": "4", "transport": "polling"})
+            assert client.get("/hanakura/api/v1/app/health").status_code == 200
+            assert client.get("/hanakura/openapi.json").status_code == 200
+            socket_reply = client.get("/hanakura/ws/socket.io/", params={"EIO": "4", "transport": "polling"})
             assert socket_reply.status_code == 200 and socket_reply.text.startswith("0{")
             # Nothing is left at the unprefixed paths, so a host application can use them.
             assert client.get("/api/v1/app/health").status_code == 404
@@ -270,12 +270,12 @@ def test_the_prefix_keeps_access_control(tmp_path):
 
 
 def test_prefix_over_a_real_server(tmp_path, models):
-    hub = ModelHubServer(data_dir=tmp_path / "data", model_roots=[models], port=0, api_prefix="/tools/model-hub")
+    hub = HanakuraServer(data_dir=tmp_path / "data", model_roots=[models], port=0, api_prefix="/tools/hanakura")
     try:
         url = hub.start()
-        assert url.endswith("/tools/model-hub")
+        assert url.endswith("/tools/hanakura")
         assert get(f"{url}/api/v1/app/health")[0] == 200
-        base = url[: -len("/tools/model-hub")]
+        base = url[: -len("/tools/hanakura")]
         assert get(f"{base}/api/v1/app/health")[0] == 404
     finally:
         hub.stop()

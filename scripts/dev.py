@@ -19,8 +19,8 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-WEB = ROOT / "sd_model_hub" / "webui"
-PYTHON_PATHS = ["sd_model_hub", "tests", "scripts"]
+WEB = ROOT / "hanakura" / "webui"
+PYTHON_PATHS = ["hanakura", "tests", "scripts"]
 SCHEMA = WEB / "src" / "api" / "schema.d.ts"
 DEFAULT_API_PORT = 7865
 DEFAULT_WEB_PORT = 5173
@@ -189,7 +189,7 @@ def web_install() -> int:
     return bun("install")
 
 
-@task("web", "Build the web UI into sd_model_hub/webui/dist")
+@task("web", "Build the web UI into hanakura/webui/dist")
 def web_build() -> int:
     return bun("run", "build")
 
@@ -215,12 +215,12 @@ def dev(options: list[str]) -> int:
         print("The web UI dependencies are missing. Run: python scripts/dev.py web-install", file=sys.stderr)
         return 1
 
-    api_command = [sys.executable, "-m", "sd_model_hub", "webui", "--no-open", "--port", str(args.api_port), "--strict-port"]
+    api_command = [sys.executable, "-m", "hanakura", "webui", "--no-open", "--port", str(args.api_port), "--strict-port"]
     if args.data_dir:
         api_command += ["--data-dir", args.data_dir]
     api_env = {"PYTHONUNBUFFERED": "1", "PYTHONPATH": str(ROOT) + os.pathsep + os.environ.get("PYTHONPATH", "")}
     # The dev server proxies to the API port chosen here.
-    web_env = {"SD_MODEL_HUB_BACKEND": f"http://127.0.0.1:{args.api_port}", "FORCE_COLOR": "1"}
+    web_env = {"HANAKURA_BACKEND": f"http://127.0.0.1:{args.api_port}", "FORCE_COLOR": "1"}
 
     # The dev server binds localhost, which is IPv6 on some machines, so it is named as localhost.
     print(f"\n  Web UI  http://localhost:{args.web_port}\n  API     http://127.0.0.1:{args.api_port}\n", file=sys.stderr)

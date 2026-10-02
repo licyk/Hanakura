@@ -7,8 +7,8 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from sd_model_hub.api.app import create_app
-from sd_model_hub.core.context import build_services
+from hanakura.api.app import create_app
+from hanakura.core.context import build_services
 from tests.conftest import LORA_SDXL, write_safetensors
 
 HOST = {"host": "localhost"}
@@ -135,7 +135,7 @@ def test_access_token(services, client):
     assert client.get("/api/v1/settings").status_code == 401
     assert client.get("/api/v1/app/health").json()["auth_required"] is True
     assert client.get("/api/v1/settings", headers={"authorization": "Bearer tok"}).status_code == 200
-    assert client.get("/api/v1/settings", cookies={"sd_model_hub_token": "tok"}).status_code == 200
+    assert client.get("/api/v1/settings", cookies={"hanakura_token": "tok"}).status_code == 200
     assert client.get("/api/v1/settings", headers={"authorization": "Bearer wrong"}).status_code == 401
 
 
@@ -173,7 +173,7 @@ def test_download_file_needs_the_access_token(services, client, root):
     url = f"/api/v1/library/roots/{root_id}/file"
     assert client.get(url, params={"path": "loras/m.safetensors"}).status_code == 401
     # A browser download is a navigation: it carries the cookie, not a bearer header.
-    assert client.get(url, params={"path": "loras/m.safetensors"}, cookies={"sd_model_hub_token": "tok"}).status_code == 200
+    assert client.get(url, params={"path": "loras/m.safetensors"}, cookies={"hanakura_token": "tok"}).status_code == 200
 
 
 def test_openapi_has_events(client):
@@ -219,7 +219,7 @@ def test_identify_accepts_valid_hash(client, services, monkeypatch):
 def test_download_response_computed_field(client, services, monkeypatch, runner, can_pause):
     from datetime import datetime, timezone
 
-    from sd_model_hub.core.downloads.models import DownloadJob
+    from hanakura.core.downloads.models import DownloadJob
 
     job = DownloadJob(id=1, runner=runner, title="model", dest_dir="/models", created_at=datetime.now(timezone.utc))
     monkeypatch.setattr(services.downloads, "get", lambda job_id: job)
@@ -253,7 +253,7 @@ def test_oauth_round_trip_through_the_api(oauth_client):
     assert url.startswith("https://auth.civitai.com/api/auth/oauth/authorize?")
     assert "code_challenge_method=S256" in url
     # The browser binding is an HttpOnly cookie, scoped to the auth routes.
-    cookie = next(c for c in start.headers.get_list("set-cookie") if c.startswith("sd_model_hub_oauth="))
+    cookie = next(c for c in start.headers.get_list("set-cookie") if c.startswith("hanakura_oauth="))
     assert "httponly" in cookie.lower() and "samesite=lax" in cookie.lower() and "Path=/api/v1/auth/civitai" in cookie
     assert "access_token" not in start.text
 
@@ -344,7 +344,7 @@ def test_socketio_endpoint_answers(client):
 
 
 def test_repo_ids_with_slash_route(services, client, monkeypatch):
-    from sd_model_hub.core.hubs.models import RepoDetail
+    from hanakura.core.hubs.models import RepoDetail
 
     seen = {}
 
@@ -362,7 +362,7 @@ def test_static_fallback(tmp_path, services, monkeypatch):
     (dist / "assets").mkdir(parents=True)
     (dist / "index.html").write_text("<html>ui</html>")
     (dist / "assets" / "app-abc.js").write_text("js")
-    monkeypatch.setattr("sd_model_hub.api.app.web_dist_dir", lambda: dist)
+    monkeypatch.setattr("hanakura.api.app.web_dist_dir", lambda: dist)
     app = create_app(services, bound_host="127.0.0.1", start_downloads=False)
     with TestClient(app, base_url="http://localhost") as c:
         page = c.get("/library/deep/link", headers={"accept": "text/html"})

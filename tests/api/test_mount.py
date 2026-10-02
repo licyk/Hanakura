@@ -8,9 +8,9 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from sd_model_hub.api.app import create_app
-from sd_model_hub.core.context import build_services
-from sd_model_hub.core.events.models import LibraryChangedEvent
+from hanakura.api.app import create_app
+from hanakura.core.context import build_services
+from hanakura.core.events.models import LibraryChangedEvent
 from tests.core.test_auth import CLIENT_ID, Provider
 
 
@@ -106,7 +106,7 @@ def test_destination_endpoint_uses_core_rules(services, root):
 def test_mounted_ui_and_oauth_root_path(services, tmp_path, monkeypatch):
     from starlette import _utils
 
-    from sd_model_hub.api import app as app_module
+    from hanakura.api import app as app_module
 
     dist = tmp_path / "dist"
     (dist / "assets").mkdir(parents=True)

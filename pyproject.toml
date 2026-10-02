@@ -3,13 +3,13 @@ requires = ["setuptools", "pip", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "sd-model-hub"
-description = "Deprecated: this project continues as Hanakura (pip install hanakura)"
+name = "hanakura"
+description = "Download and manage Stable Diffusion models from the command line and a web UI"
 readme = "README.md"
 requires-python = ">=3.10"
 dynamic = ["version"]
 classifiers = [
-    "Development Status :: 7 - Inactive",
+    "Development Status :: 3 - Alpha",
     "Environment :: Console",
     "Environment :: Web Environment",
     "Intended Audience :: End Users/Desktop",
@@ -46,23 +46,23 @@ dependencies = [
 dev = ["keyring", "pytest", "ruff", "tomli", "ty"]
 
 [project.scripts]
-"sd-model-hub" = "sd_model_hub.cli.app:main"
+"hanakura" = "hanakura.cli.app:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["sd_model_hub*"]
+include = ["hanakura*"]
 
 [tool.setuptools.package-data]
-"sd_model_hub.webui" = ["dist/**/*"]
-"sd_model_hub.core.detection" = ["rules_data/*.json"]
+"hanakura.webui" = ["dist/**/*"]
+"hanakura.core.detection" = ["rules_data/*.json"]
 
 [tool.setuptools.dynamic]
-version = { attr = "sd_model_hub.version.VERSION" }
+version = { attr = "hanakura.version.VERSION" }
 
 [tool.ruff]
 line-length = 180
 indent-width = 4
-extend-exclude = ["sd_model_hub/webui/dist", "sd_model_hub/webui/node_modules"]
+extend-exclude = ["hanakura/webui/dist", "hanakura/webui/node_modules"]
 lint.ignore = [
     "E402" # module-import-not-at-top-of-file
 ]
@@ -74,8 +74,8 @@ python-version = "3.10"
 output-format = "concise"
 
 [tool.ty.src]
-include = ["sd_model_hub"]
-exclude = ["sd_model_hub/webui/dist", "sd_model_hub/webui/node_modules"]
+include = ["hanakura"]
+exclude = ["hanakura/webui/dist", "hanakura/webui/node_modules"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

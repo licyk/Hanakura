@@ -5,7 +5,7 @@ from types import ModuleType
 
 import pytest
 
-from sd_model_hub.core.hubs.worker import download_modelscope
+from hanakura.core.hubs.worker import download_modelscope
 
 
 @pytest.mark.parametrize(

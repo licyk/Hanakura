@@ -9,14 +9,14 @@ from urllib.parse import parse_qs, urlsplit
 import httpx
 import pytest
 
-from sd_model_hub.core.auth.oauth_client import REFRESH_MARGIN_SECONDS, ReauthorizationRequired, challenge_for, make_verifier
-from sd_model_hub.core.auth.store import FileCredentialStore, KeyringCredentialStore, OAuthCredentials, open_store
-from sd_model_hub.core.auth.transactions import TransactionStore
-from sd_model_hub.core.context import build_services
-from sd_model_hub.core.errors import ConflictError, ValidationError
-from sd_model_hub.core.settings import SettingsService
+from hanakura.core.auth.oauth_client import REFRESH_MARGIN_SECONDS, ReauthorizationRequired, challenge_for, make_verifier
+from hanakura.core.auth.store import FileCredentialStore, KeyringCredentialStore, OAuthCredentials, open_store
+from hanakura.core.auth.transactions import TransactionStore
+from hanakura.core.context import build_services
+from hanakura.core.errors import ConflictError, ValidationError
+from hanakura.core.settings import SettingsService
 
-CLIENT_ID = "sd-model-hub-test"
+CLIENT_ID = "hanakura-test"
 REDIRECT = "http://127.0.0.1:7865/api/v1/auth/civitai/callback"
 
 
@@ -257,7 +257,7 @@ def test_a_refresh_in_flight_cannot_restore_a_disconnected_account(services, pro
         services.auth.store.clear()
         return result
 
-    monkeypatch.setattr("sd_model_hub.core.auth.oauth_client.CivitaiOAuthClient.refresh", staticmethod(refresh_then_disconnect))
+    monkeypatch.setattr("hanakura.core.auth.oauth_client.CivitaiOAuthClient.refresh", staticmethod(refresh_then_disconnect))
     with pytest.raises(ReauthorizationRequired):
         services.auth._refresh(credentials, force=True)
     assert services.auth.store.load() is None
@@ -305,7 +305,7 @@ def test_selecting_oauth_without_a_connection_is_refused(services):
 
 
 def test_an_environment_override_wins_and_is_reported(tmp_path, provider):
-    env = {"SD_MODEL_HUB_SOURCES__CIVITAI__TOKEN": "from-env"}
+    env = {"HANAKURA_SOURCES__CIVITAI__TOKEN": "from-env"}
     s = build_services(data_dir=tmp_path / "d", environ=env, transport=httpx.MockTransport(provider))
     try:
         s.settings.update({"auth": {"civitai": {"oauth_client_id": CLIENT_ID}}})
@@ -329,7 +329,7 @@ def test_the_adapter_uses_the_effective_credential(services, provider):
 
     services.http._transport = httpx.MockTransport(handler)
     services.http.close()
-    from sd_model_hub.core.sources.models import SearchQuery
+    from hanakura.core.sources.models import SearchQuery
 
     services.sources.search("civitai", SearchQuery(query="a"))
     assert "Authorization" not in calls[-1].headers

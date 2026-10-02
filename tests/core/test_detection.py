@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from sd_model_hub.core.db import Database
-from sd_model_hub.core.detection import DetectionService
-from sd_model_hub.core.detection.header import HeaderError, ModelHeader, read_gguf_header, read_safetensors_header
-from sd_model_hub.core.detection.rules import RuleTable
+from hanakura.core.db import Database
+from hanakura.core.detection import DetectionService
+from hanakura.core.detection.header import HeaderError, ModelHeader, read_gguf_header, read_safetensors_header
+from hanakura.core.detection.rules import RuleTable
 from tests.conftest import LORA_SD1, LORA_SDXL, write_safetensors
 
 FIXTURES = sorted((Path(__file__).parent.parent / "fixtures" / "headers").glob("*.json.gz"))

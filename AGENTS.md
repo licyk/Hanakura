@@ -1,4 +1,4 @@
-# SD Model Hub — working notes for agents
+# Hanakura — working notes for agents
 
 Everything needed to work on this repository is in this file. It is self-contained on purpose:
 do not rely on anything outside it, and when you learn something durable, write it here.
@@ -7,7 +7,7 @@ do not rely on anything outside it, and when you learn something durable, write 
 
 A tool for downloading and managing Stable Diffusion models, with two ends over one core:
 
-- **A command line** (`sd-model-hub`, Typer) that does everything, including starting the web UI.
+- **A command line** (`hanakura`, Typer) that does everything, including starting the web UI.
 - **A web UI** (Vue 3, served by the same Python process) with five screens: Browse, Hubs,
   Link, Library, Settings.
 
@@ -23,13 +23,13 @@ What it does:
   kind and base architecture from the file header, browse with previews, and import, move,
   rename and delete models together with their companion files.
 
-Package `sd_model_hub`, distribution and command `sd-model-hub`, Python 3.10 or newer. The web
+Package, distribution and command are all `hanakura`; Python 3.10 or newer. The web
 UI is built into the wheel, so users never need Node.
 
 ## 2. Layout and the layer rule
 
 ```
-sd_model_hub/
+hanakura/
   core/        all logic. Imports no web or CLI framework.
     settings/  pydantic models + TOML file + env overrides
     auth/      Civitai credentials: manual token or OAuth (PKCE)
@@ -56,12 +56,12 @@ function. `cli/factory.py` owns the shared settings and adds `--debug` at every 
 custom command and group classes; it is the only module that may import the private
 `typer._click`; Typer upgrades must remain compatible with this integration. `main()` does
 its own error handling so exit codes and messages are uniform. Heavy imports (FastAPI, uvicorn,
-the hub libraries) go inside the command functions, which keeps `sd-model-hub version` fast.
+the hub libraries) go inside the command functions, which keeps `hanakura version` fast.
 
 **The layer rule, enforced by `tests/core/test_architecture.py`:** `core` may import the standard
 library, `httpx`, `pydantic` and the hub libraries, and must not import `fastapi`, `starlette`,
-`typer`, `click`, `socketio`, `uvicorn` or `rich`, nor anything from `sd_model_hub.api` or
-`sd_model_hub.cli`. The API and the CLI are wrappers: parse input, call one core method, map a
+`typer`, `click`, `socketio`, `uvicorn` or `rich`, nor anything from `hanakura.api` or
+`hanakura.cli`. The API and the CLI are wrappers: parse input, call one core method, map a
 domain error to a status or exit code, shape the output. No file access, HTTP calls or business
 decisions in a route or a command.
 
@@ -93,10 +93,10 @@ The web UI uses **bun**. **`python scripts/dev.py check` is what CI runs, and it
 you call a change done.**
 
 **Releasing** (`.github/workflows/release.yml`) runs on a push to `main` changing
-`sd_model_hub/version.py`, on a `v*` tag, or by hand: every check above, then the wheel is built
+`hanakura/version.py`, on a `v*` tag, or by hand: every check above, then the wheel is built
 with the UI inside it and verified (UI present, rules present, installs, runs), and only then
 published to PyPI with Twine on the runner — `TWINE_USERNAME=__token__`, the `TWINE_PASSWORD`
-secret, no OIDC, `--skip-existing --non-interactive`. A tag must match `sd_model_hub/version.py`;
+secret, no OIDC, `--skip-existing --non-interactive`. A tag must match `hanakura/version.py`;
 every trigger publishes, only a tag also creates a GitHub release. So a release is: bump
 `VERSION`, commit, push to `main`. Python 3.10 is the floor, so `typing.Self`, `tomllib` without
 the `tomli` fallback and other 3.11+ APIs are out.
@@ -105,7 +105,7 @@ the `tomli` fallback and other 3.11+ APIs are out.
 
 - **Python:** ruff with line length 180, indent 4, `E402` ignored (see `pyproject.toml`). Ruff's
   default rule set is kept clean; do not add blanket ignores to silence a finding.
-- **Python types:** ty checks `sd_model_hub`, excluding the generated web UI and its dependencies.
+- **Python types:** ty checks `hanakura`, excluding the generated web UI and its dependencies.
   It targets Python 3.10 locally; CI overrides the target for each Python matrix entry.
   `typecheck-py` passes its own interpreter with `--python` so dependencies resolve consistently.
   The `dev` extra includes `keyring` for the optional credential-store import and `tomli` for
@@ -115,7 +115,7 @@ the `tomli` fallback and other 3.11+ APIs are out.
 - **Comments explain why, never what.** Do not narrate the diff or leave "changed X" notes.
 - **Docstrings** on modules and non-obvious functions; one line where one line does.
 - **Use the file tools to edit code.** A scripted mass rewrite (sed and friends) needs the user's
-  agreement first; it was given once, for the `model_hub` → `sd_model_hub` rename.
+  agreement first; it has only been given for renaming the project throughout.
 - **TypeScript is pinned to 6.x.** `vue-tsc` and `openapi-typescript` need the JavaScript
   compiler API that TypeScript 7 removed; do not "upgrade" it without checking both.
 - **Vue:** `<script setup lang="ts">`, strict TypeScript. Views and composite components import
@@ -127,12 +127,12 @@ the `tomli` fallback and other 3.11+ APIs are out.
 ## 5. Settings, secrets and errors
 
 Settings are a pydantic model saved as `settings.toml` in the data directory
-(`~/.local/share/sd-model-hub`, `%APPDATA%` on Windows, or `SD_MODEL_HUB_DATA_DIR`). Groups:
+(`~/.local/share/hanakura`, `%APPDATA%` on Windows, or `HANAKURA_DATA_DIR`). Groups:
 `server`, `paths.model_roots`, `sources.<id>`, `auth.civitai`, `network`, `downloads`, `content`,
 `library`.
 
-Every setting can be overridden by an environment variable named `SD_MODEL_HUB_<GROUP>__<FIELD>`,
-for example `SD_MODEL_HUB_SERVER__PORT=8000`. Overrides win over the file and are never written
+Every setting can be overridden by an environment variable named `HANAKURA_<GROUP>__<FIELD>`,
+for example `HANAKURA_SERVER__PORT=8000`. Overrides win over the file and are never written
 back to it.
 
 **Secrets never leave the server.** The settings API returns `token_configured: true` in place of
@@ -150,7 +150,7 @@ Domain errors live in `core/errors.py` and both wrappers translate them:
 | `InvalidPathError`, `ValidationError` | 400 | 4 |
 | `AuthRequiredError` | 401 | 5 |
 | `SourceError` / `RateLimitedError` | 502 / 429 | 6 |
-| `ModelHubError` (base) | 500 | 1 |
+| `HanakuraError` (base) | 500 | 1 |
 
 The API's single error shape is `{"code", "message", "detail"}`.
 
@@ -239,7 +239,7 @@ operation — move, rename, delete, import — carries them along.
 `<stem>.<ext>` then `<stem>.preview.<ext>`; first hit wins. Served through a thumbnail endpoint
 that resizes with Pillow and caches in the data directory.
 
-**Sidecars.** This project writes `<stem>.sdmodelhub.json`. `<stem>.json` belongs to the WebUI's
+**Sidecars.** This project writes `<stem>.hanakura.json`. `<stem>.json` belongs to the WebUI's
 metadata editor: it is read for display and only ever created when `downloads.write_webui_metadata`
 is on and no file exists. Also read: `<stem>.txt`, `<stem>.description.txt`, `<stem>.civitai.info`.
 
@@ -412,10 +412,10 @@ says so while it applies.
   host, which blocks DNS rebinding. A state-changing request whose `Origin` names another site, or
   whose `Sec-Fetch-Site` says cross-site, is refused; a request with neither header cannot come
   from a browser page and is allowed. A non-loopback host requires `server.access_token` on every
-  request and on the socket handshake (bearer header, `sd_model_hub_token` cookie or `?token=`).
+  request and on the socket handshake (bearer header, `hanakura_token` cookie or `?token=`).
   The only exemption is the OAuth callback — exactly that path with GET — because the browser
   arrives from Civitai with no header; it is still validated against the transaction and the Host.
-- **Serving the built UI:** the folder is found through `sd_model_hub.webui.__path__`, so a
+- **Serving the built UI:** the folder is found through `hanakura.webui.__path__`, so a
   source checkout and an installed wheel both work with no configuration. The mount is
   registered last, after every API route and the socket. A missing `dist/` is a warning, not an
   error — that is the normal state while working on the back end. `index.html` is never cached,
@@ -570,15 +570,15 @@ a custom logger; everything else is still printed in full.
 
 ## 12. Embedding in another application
 
-`sd_model_hub/embed.py` is the public façade, re-exported lazily from the package so
-`sd-model-hub version` does not pay for FastAPI. Its module docstring carries the worked example;
+`hanakura/embed.py` is the public façade, re-exported lazily from the package so
+`hanakura version` does not pay for FastAPI. Its module docstring carries the worked example;
 in short:
 
 ```python
-from sd_model_hub import ModelHubServer, ModelRoot
+from hanakura import HanakuraServer, ModelRoot
 
-hub = ModelHubServer(data_dir=..., settings_path=..., model_roots=[ModelRoot(path, layout="comfyui")],
-                     lock_model_roots=True, combined_view=True, port=0, api_prefix="/tools/model-hub", settings={...})
+hub = HanakuraServer(data_dir=..., settings_path=..., model_roots=[ModelRoot(path, layout="comfyui")],
+                     lock_model_roots=True, combined_view=True, port=0, api_prefix="/tools/hanakura", settings={...})
 url = hub.start()   # non-blocking, returns the URL; hub.run() blocks; it is a context manager too
 hub.stop()
 ```
@@ -677,7 +677,7 @@ One line each; the section in brackets explains why.
 - The Windows credential store, and the app on Windows generally, is untested.
 - **Packaging:** the root `LICENSE` is the GPLv3 text copied from `sd-webui-all-in-one`, and
   `pyproject.toml` declares no `license` and no `urls`, so the published releases carry neither.
-  Releasing itself works — 0.1.5–0.1.9 are on PyPI, published from `main` — but no `v*` tag has
-  ever been pushed, so the tag check and the GitHub release job have never run.
+  Releasing itself works by pushing to `main`, but no `v*` tag has ever been pushed, so the tag
+  check and the GitHub release job have never run.
 - "Select similar models" from the original plan is implemented as filters for kind and base
   model; nobody has confirmed that is what was meant.

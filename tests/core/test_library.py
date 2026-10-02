@@ -4,11 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from sd_model_hub.core.errors import ConflictError, InvalidPathError, NotFoundError, ValidationError
-from sd_model_hub.core.events.models import LibraryChangedEvent
-from sd_model_hub.core.library.layouts import default_folder, folder_kind
-from sd_model_hub.core.library.models import COMBINED_VIEW_ID, DeleteRequest, FolderCreate, ImportRequest, MoveRequest, PathRef, RenameRequest, RootCreate
-from sd_model_hub.core.library.safety import resolve_in_root, validate_name
+from hanakura.core.errors import ConflictError, InvalidPathError, NotFoundError, ValidationError
+from hanakura.core.events.models import LibraryChangedEvent
+from hanakura.core.library.layouts import default_folder, folder_kind
+from hanakura.core.library.models import COMBINED_VIEW_ID, DeleteRequest, FolderCreate, ImportRequest, MoveRequest, PathRef, RenameRequest, RootCreate
+from hanakura.core.library.safety import resolve_in_root, validate_name
 from tests.conftest import LORA_SD1, LORA_SDXL, write_safetensors
 
 # -- path safety -----------------------------------------------------------------

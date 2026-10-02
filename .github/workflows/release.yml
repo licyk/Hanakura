@@ -1,12 +1,12 @@
 name: Release
 
 # Version changes on main, version tags and manual runs publish to PyPI after all checks pass.
-# Tag-triggered runs also verify the tag matches sd_model_hub/version.py.
+# Tag-triggered runs also verify the tag matches hanakura/version.py.
 on:
   push:
     branches: [main]
     tags: ['v*']
-    paths: ['sd_model_hub/version.py']
+    paths: ['hanakura/version.py']
   workflow_dispatch:
 
 permissions:
@@ -38,8 +38,8 @@ jobs:
       - run: pip install -e ".[dev]"
       - name: Lint
         run: |
-          python -m ruff check sd_model_hub tests scripts
-          python -m ruff format --check sd_model_hub tests scripts
+          python -m ruff check hanakura tests scripts
+          python -m ruff format --check hanakura tests scripts
       - name: Tests
         run: python -m pytest -q
       - name: Python types (ty)
@@ -80,12 +80,12 @@ jobs:
           bun-version: latest
       - run: pip install -e ".[dev]"
       - run: bun install --frozen-lockfile
-        working-directory: sd_model_hub/webui
+        working-directory: hanakura/webui
       - name: Tests and type-check
         run: |
           bun run test
           bun run typecheck
-        working-directory: sd_model_hub/webui
+        working-directory: hanakura/webui
       - name: The committed API types match the schema
         run: python scripts/dev.py typegen-check
 
@@ -106,16 +106,16 @@ jobs:
           bun-version: latest
       - run: pip install --upgrade build twine
 
-      - name: The tag and sd_model_hub/version.py agree
+      - name: The tag and hanakura/version.py agree
         id: version
         run: |
-          version=$(python -c "from sd_model_hub.version import VERSION; print(VERSION)")
+          version=$(python -c "from hanakura.version import VERSION; print(VERSION)")
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Package version: $version"
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             tag="${GITHUB_REF_NAME#v}"
             if [ "$tag" != "$version" ]; then
-              echo "::error::Tag $GITHUB_REF_NAME does not match VERSION $version in sd_model_hub/version.py"
+              echo "::error::Tag $GITHUB_REF_NAME does not match VERSION $version in hanakura/version.py"
               exit 1
             fi
           fi
@@ -130,8 +130,8 @@ jobs:
           import pathlib, zipfile
           wheel = next(pathlib.Path("dist").glob("*.whl"))
           names = zipfile.ZipFile(wheel).namelist()
-          assert any(n.startswith("sd_model_hub/webui/dist/") for n in names), "the wheel has no web UI"
-          assert "sd_model_hub/webui/dist/index.html" in names, "the wheel has no index.html"
+          assert any(n.startswith("hanakura/webui/dist/") for n in names), "the wheel has no web UI"
+          assert "hanakura/webui/dist/index.html" in names, "the wheel has no index.html"
           assert any(n.endswith("rules_data/diffusion.json") for n in names), "the wheel has no detection rules"
           print(wheel.name, f"{wheel.stat().st_size / 1e6:.1f} MB", len(names), "files")
           PY
@@ -143,8 +143,8 @@ jobs:
         run: |
           python -m venv /tmp/probe
           /tmp/probe/bin/pip install --quiet dist/*.whl
-          /tmp/probe/bin/sd-model-hub version
-          /tmp/probe/bin/python -c "import sd_model_hub; print(sd_model_hub.VERSION)"
+          /tmp/probe/bin/hanakura version
+          /tmp/probe/bin/python -c "import hanakura; print(hanakura.VERSION)"
 
       - uses: actions/upload-artifact@v7.0.1
         with:
@@ -159,7 +159,7 @@ jobs:
     # The environment can require an approval before a release.
     environment:
       name: pypi
-      url: https://pypi.org/p/sd-model-hub
+      url: https://pypi.org/p/hanakura
     steps:
       - uses: actions/setup-python@v7.0.0
         with:

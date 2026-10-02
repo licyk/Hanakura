@@ -4,8 +4,8 @@ import logging
 import pytest
 from typer.testing import CliRunner
 
-from sd_model_hub.cli.app import get_app
-from sd_model_hub.logger import LOGGER_NAME
+from hanakura.cli.app import get_app
+from hanakura.logger import LOGGER_NAME
 from tests.conftest import LORA_SDXL, write_safetensors
 
 EXPECTED_TREE = {
@@ -44,7 +44,7 @@ def _tree(group):
 
 @pytest.fixture
 def runner(tmp_path, monkeypatch):
-    monkeypatch.setenv("SD_MODEL_HUB_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("HANAKURA_DATA_DIR", str(tmp_path / "data"))
     # --debug sets the application logger to DEBUG for the whole process; reset it so one test's
     # log lines cannot end up in another's captured output.
     logger = logging.getLogger(LOGGER_NAME)
@@ -71,13 +71,13 @@ def test_help_is_alphabetical(runner):
 
 def test_version_json(runner):
     result = runner.invoke(get_app(), ["version", "--json"])
-    assert json.loads(result.output)["sd_model_hub"]
+    assert json.loads(result.output)["hanakura"]
 
 
 def test_config_roundtrip_and_error_exit_code(runner):
     assert runner.invoke(get_app(), ["config", "set", "server.port", "8001"]).exit_code == 0
     assert json.loads(runner.invoke(get_app(), ["config", "get", "server.port"]).output) == 8001
-    from sd_model_hub.core.errors import ValidationError
+    from hanakura.core.errors import ValidationError
 
     result = runner.invoke(get_app(), ["config", "get", "nope"])
     assert isinstance(result.exception, ValidationError) and result.exception.exit_code == 4
@@ -103,7 +103,7 @@ def test_library_flow(runner, tmp_path):
 
 
 def test_library_list_all_roots(runner, tmp_path):
-    from sd_model_hub.core.errors import ValidationError
+    from hanakura.core.errors import ValidationError
 
     app = get_app()
     for name in ("a", "b"):
@@ -118,7 +118,7 @@ def test_library_list_all_roots(runner, tmp_path):
 
 
 def test_path_outside_roots_is_not_found(runner, tmp_path):
-    from sd_model_hub.core.errors import NotFoundError
+    from hanakura.core.errors import NotFoundError
 
     result = runner.invoke(get_app(), ["library", "info", str(tmp_path)])
     assert isinstance(result.exception, NotFoundError) and result.exception.exit_code == 2
@@ -133,7 +133,7 @@ def test_invalid_root_layout_is_validated(runner, tmp_path):
 
 
 def test_logging_setup_does_not_duplicate_handlers(monkeypatch):
-    from sd_model_hub.logger import setup_logging
+    from hanakura.logger import setup_logging
 
     logger = logging.getLogger(LOGGER_NAME)
     monkeypatch.setattr(logger, "handlers", [])

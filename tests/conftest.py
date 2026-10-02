@@ -5,8 +5,8 @@ from typing import Any
 
 import pytest
 
-from sd_model_hub.core.context import Services, build_services
-from sd_model_hub.core.library.models import RootCreate
+from hanakura.core.context import Services, build_services
+from hanakura.core.library.models import RootCreate
 
 
 def write_safetensors(path: Path, tensors: dict[str, list[int]], metadata: dict[str, str] | None = None, payload: bytes = b"") -> Path:

@@ -8,10 +8,10 @@ from pathlib import Path
 import httpx
 import pytest
 
-from sd_model_hub.core.context import build_services
-from sd_model_hub.core.downloads import manager as manager_module
-from sd_model_hub.core.downloads.models import DownloadCreate, DownloadJob, SourceFileRef
-from sd_model_hub.core.errors import ConflictError, ValidationError
+from hanakura.core.context import build_services
+from hanakura.core.downloads import manager as manager_module
+from hanakura.core.downloads.models import DownloadCreate, DownloadJob, SourceFileRef
+from hanakura.core.errors import ConflictError, ValidationError
 
 BODY = bytes(range(256)) * 4096  # 1 MiB
 SHA = hashlib.sha256(BODY).hexdigest()
@@ -86,7 +86,7 @@ def test_url_download_with_content_disposition_and_hash(hub, server, tmp_path):
     assert job.state == "completed", job.error
     final = tmp_path / "out" / "nice name.safetensors"
     assert final.read_bytes() == BODY and job.sha256 == SHA
-    sidecar = json.loads((tmp_path / "out" / "nice name.sdmodelhub.json").read_text())
+    sidecar = json.loads((tmp_path / "out" / "nice name.hanakura.json").read_text())
     assert sidecar["url"] == "https://files.example/dl?id=1"
     assert not list((tmp_path / "out").glob("*.part"))
 
@@ -270,7 +270,7 @@ def test_civitai_download_token_stays_on_civitai(hub, server, tmp_path):
     assert "Authorization" not in by_host["storage.example"].headers
     assert "Authorization" not in by_host["image.civitai.com"].headers
     assert all("SECRET" not in str(r.url) for r in server.requests)
-    meta = json.loads((tmp_path / "detail.sdmodelhub.json").read_text())
+    meta = json.loads((tmp_path / "detail.hanakura.json").read_text())
     assert meta["model_id"] == "7" and meta["base_model"] == "sdxl" and meta["trained_words"] == ["detailed"]
     assert (tmp_path / "detail.preview.jpg").read_bytes() == b"jpeg"
     webui = json.loads((tmp_path / "detail.json").read_text())
@@ -288,18 +288,18 @@ def _wait_for(cond, timeout: float = 5.0) -> None:
 
 def test_hub_runner_reports_worker_failure_and_cancel(tmp_path):
     """The child process is replaced by a fake worker; cancel must terminate it."""
-    from sd_model_hub.core.downloads.hub_runner import run_hub_download
-    from sd_model_hub.core.downloads.job import JobControl, JobStopped
-    from sd_model_hub.core.errors import ModelHubError
-    from sd_model_hub.core.hubs.huggingface import HuggingFaceAdapter
-    from sd_model_hub.core.hubs.models import RepoFile
-    from sd_model_hub.core.settings.models import SourceSettings
+    from hanakura.core.downloads.hub_runner import run_hub_download
+    from hanakura.core.downloads.job import JobControl, JobStopped
+    from hanakura.core.errors import HanakuraError
+    from hanakura.core.hubs.huggingface import HuggingFaceAdapter
+    from hanakura.core.hubs.models import RepoFile
+    from hanakura.core.settings.models import SourceSettings
 
     adapter = HuggingFaceAdapter(lambda: httpx.Client(), lambda: SourceSettings())
     files = [RepoFile(path="a.safetensors", size=10)]
     failing = tmp_path / "fail.py"
     failing.write_text('import sys, json; sys.stdin.readline(); print("@@MH " + json.dumps({"event": "error", "message": "boom"})); sys.exit(1)\n')
-    with pytest.raises(ModelHubError, match="boom"):
+    with pytest.raises(HanakuraError, match="boom"):
         run_hub_download(adapter, "o/r", None, files, tmp_path / "dest", False, JobControl(), lambda d, t: None, worker_path=str(failing))
 
     sleepy = tmp_path / "sleep.py"
@@ -315,12 +315,12 @@ def test_hub_runner_reports_worker_failure_and_cancel(tmp_path):
 
     fake_ok = tmp_path / "ok.py"
     fake_ok.write_text("import sys, pathlib; sys.stdin.readline(); pathlib.Path('a.safetensors').write_bytes(b'short')\n")
-    with pytest.raises(ModelHubError, match="expected 10"):
+    with pytest.raises(HanakuraError, match="expected 10"):
         run_hub_download(adapter, "o/r", None, files, tmp_path / "dest3", False, JobControl(), lambda d, t: None, worker_path=str(fake_ok))
 
 
 def test_file_name_parsing():
-    from sd_model_hub.core.downloads.http_downloader import file_name_from_headers, sanitize_file_name
+    from hanakura.core.downloads.http_downloader import file_name_from_headers, sanitize_file_name
 
     r = httpx.Response(200, headers={"Content-Disposition": "attachment; filename*=UTF-8''%E6%A8%A1%E5%9E%8B.safetensors"})
     assert file_name_from_headers(r) == "模型.safetensors"
@@ -331,7 +331,7 @@ def test_file_name_parsing():
 
 def test_job_events_carry_a_snapshot_of_the_state_they_announce(hub, server, tmp_path):
     """A subscriber may serialize an event long after it was published; the payload must not move."""
-    from sd_model_hub.core.events.models import DownloadJobEvent
+    from hanakura.core.events.models import DownloadJobEvent
 
     server.handler = lambda r: httpx.Response(200, headers={"Content-Length": str(len(BODY))}, stream=DroppingStream(BODY, delay=0.01))
     seen: list[DownloadJobEvent] = []
