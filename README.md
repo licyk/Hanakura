@@ -25,6 +25,14 @@
 
 </div>
 
+> [!WARNING]
+> **sd-model-hub is deprecated and no longer receives updates.** The project continues as
+> **Hanakura**. Install it instead:
+>
+> ```bash
+> python -m pip install hanakura
+> ```
+
 Download and manage Stable Diffusion models, from the command line or a web UI.
 
 - **Browse** Civitai, OpenModelDB and GitHub Releases, and download with resume, SHA256

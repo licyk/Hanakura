@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sd-model-hub"
-description = "Download and manage Stable Diffusion models from the command line and a web UI"
+description = "Deprecated: this project continues as Hanakura (pip install hanakura)"
 readme = "README.md"
 requires-python = ">=3.10"
 dynamic = ["version"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 7 - Inactive",
     "Environment :: Console",
     "Environment :: Web Environment",
     "Intended Audience :: End Users/Desktop",
