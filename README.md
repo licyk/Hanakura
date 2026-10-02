@@ -23,6 +23,8 @@
   </a>
 </p>
 
+English | [简体中文](README_zh-CN.md)
+
 </div>
 
 Download and manage Stable Diffusion models, from the command line or a web UI.
