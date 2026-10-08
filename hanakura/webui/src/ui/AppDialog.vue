@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { nextTick, ref, watch } from 'vue';
 import IconButton from '@/ui/IconButton.vue';
 import { X } from '@/ui/icons';
+import { trapFocus, useLayer } from '@/ui/layers';
 import { containerFrom } from '@/ui/motion/transitions';
 
 /**
@@ -16,28 +17,19 @@ const motionStyle = ref<Record<string, string>>({});
 let previousFocus: HTMLElement | null = null;
 
 function onKey(event: KeyboardEvent) {
-  if (event.key === 'Escape') open.value = false;
-  if (event.key === 'Tab' && panel.value) {
-    const focusable = panel.value.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"]), md-filled-button, md-outlined-button, md-text-button, md-filled-tonal-button, md-icon-button');
-    if (!focusable.length) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-      last.focus();
-      event.preventDefault();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      first.focus();
-      event.preventDefault();
-    }
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    open.value = false;
   }
+  trapFocus(event, panel.value);
 }
+useLayer(() => open.value, onKey);
 
 watch(
   open,
   async (value) => {
     if (value) {
       previousFocus = document.activeElement as HTMLElement | null;
-      document.addEventListener('keydown', onKey);
       motionStyle.value = {};
       await nextTick();
       // Offsets ignore the enter transform already applied, unlike getBoundingClientRect().
@@ -45,13 +37,11 @@ watch(
       motionStyle.value = p ? containerFrom(props.fromRect, new DOMRect(p.offsetLeft, p.offsetTop, p.offsetWidth, p.offsetHeight)) : {};
       panel.value?.focus();
     } else {
-      document.removeEventListener('keydown', onKey);
       previousFocus?.focus?.();
     }
   },
   { immediate: true },
 );
-onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
 </script>
 
 <template>

@@ -65,6 +65,9 @@ export default {
     openPage: 'Open source page',
     noFiles: 'This version has no downloadable files.',
     stats: '{downloads} downloads',
+    viewImage: 'View larger',
+    previousImage: 'Previous image',
+    nextImage: 'Next image',
   },
   dest: {
     title: 'Download to',

@@ -10,7 +10,7 @@ import type { IdentifyResult } from '@/api/types';
 import PreviewImage from '@/components/PreviewImage.vue';
 import { fileExtensionLabel, formatBytes, formatDate } from '@/format';
 import { useI18n } from '@/i18n';
-import { AppButton, AppDialog, AppIcon, Badge, Divider, Skeleton, icons, useSnackbar } from '@/ui';
+import { AppButton, AppDialog, AppIcon, Badge, Divider, ImageViewer, Skeleton, icons, useSnackbar, type ViewerItem } from '@/ui';
 
 /** Detection result, hash, sidecars and a lookup on the sources by hash, for one local model. */
 const props = defineProps<{ rootId: string | null; path: string | null; fromRect?: DOMRect | null }>();
@@ -31,6 +31,16 @@ const meta = useMeta();
 const baseLabel = (id: string | null | undefined) => (id ? (meta.data.value?.base_models.find((b) => b.value === id)?.label ?? id) : '—');
 const entry = computed(() => info.data.value?.entry);
 const det = computed(() => entry.value?.detection);
+
+const viewerOpen = ref(false);
+const viewerRect = ref<DOMRect | null>(null);
+// Size 0 asks for the preview file itself rather than a thumbnail of it.
+const viewerItems = computed<ViewerItem[]>(() => (entry.value?.preview && props.rootId ? [{ src: previewUrl(props.rootId, entry.value.preview, 0), alt: entry.value.name }] : []));
+function openViewer(rect: DOMRect) {
+  viewerRect.value = rect;
+  viewerOpen.value = true;
+}
+watch(open, (v) => !v && (viewerOpen.value = false));
 
 async function computeHash() {
   if (!props.rootId || !props.path) return;
@@ -89,7 +99,12 @@ const rows = computed(() => {
     <p v-else-if="info.error.value" class="error">{{ (info.error.value as Error).message }}</p>
     <div v-else-if="entry" class="layout">
       <div class="preview">
-        <PreviewImage :src="entry.preview && rootId ? previewUrl(rootId, entry.preview, 768) : null" :alt="entry.name" />
+        <PreviewImage
+          :src="entry.preview && rootId ? previewUrl(rootId, entry.preview, 768) : null"
+          :alt="entry.name"
+          :open-label="t('detail.viewImage')"
+          @open="openViewer"
+        />
       </div>
       <div class="facts">
         <div v-if="entry.mismatch" class="warning type-body-medium">
@@ -164,6 +179,7 @@ const rows = computed(() => {
         <p class="type-body-medium muted">{{ entry.companions.join(', ') }}</p>
       </section>
     </template>
+    <ImageViewer v-model:open="viewerOpen" :items="viewerItems" :from-rect="viewerRect" :close-label="t('common.close')" />
   </AppDialog>
 </template>
 

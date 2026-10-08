@@ -1,15 +1,20 @@
 <script setup lang="ts">
-import { onBeforeUnmount, watch } from 'vue';
 import IconButton from '@/ui/IconButton.vue';
 import { X } from '@/ui/icons';
+import { useLayer } from '@/ui/layers';
 
 /** A modal side sheet that slides in from the right edge (the ``sheet`` transition). */
 withDefaults(defineProps<{ title: string; closeLabel?: string }>(), { closeLabel: 'Close' });
 const open = defineModel<boolean>('open', { default: false });
 
-const onKey = (e: KeyboardEvent) => e.key === 'Escape' && (open.value = false);
-watch(open, (v) => (v ? document.addEventListener('keydown', onKey) : document.removeEventListener('keydown', onKey)));
-onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
+useLayer(
+  () => open.value,
+  (e) => {
+    if (e.key !== 'Escape') return;
+    e.preventDefault();
+    open.value = false;
+  },
+);
 </script>
 
 <template>

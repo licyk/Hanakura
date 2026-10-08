@@ -67,6 +67,9 @@ const zhCN: typeof en = {
     openPage: '打开来源页面',
     noFiles: '该版本没有可下载的文件。',
     stats: '{downloads} 次下载',
+    viewImage: '查看大图',
+    previousImage: '上一张',
+    nextImage: '下一张',
   },
   dest: {
     title: '下载到',

@@ -4,9 +4,10 @@ import { useModelDetail } from '@/api/queries/sources';
 import type { ModelFile } from '@/api/types';
 import MarkdownContent from '@/components/MarkdownContent.vue';
 import PreviewImage from '@/components/PreviewImage.vue';
+import { useNsfwHidden } from '@/components/nsfw';
 import { formatBytes, formatCount } from '@/format';
 import { useI18n } from '@/i18n';
-import { AppButton, AppDialog, AppIcon, Badge, Divider, SelectField, Skeleton, icons } from '@/ui';
+import { AppButton, AppDialog, AppIcon, Badge, Divider, ImageViewer, SelectField, Skeleton, icons, type ViewerItem } from '@/ui';
 
 /** Description, versions, files with size and scan result, trigger words, and a download button per file. */
 const props = defineProps<{ source: string | null; modelId: string | null; fromRect?: DOMRect | null }>();
@@ -25,6 +26,33 @@ watch(
 const version = computed(() => detail.data.value?.versions.find((v) => v.id === versionId.value) ?? detail.data.value?.versions[0]);
 const versionOptions = computed(() => (detail.data.value?.versions ?? []).map((v) => ({ value: v.id, label: v.base_model_label ? `${v.name} · ${v.base_model_label}` : v.name })));
 const images = computed(() => (version.value?.images.length ? version.value.images : (detail.data.value?.images ?? [])).slice(0, 8));
+
+/** The larger view sits above this dialog; a reveal in either one holds in both. */
+const viewerOpen = ref(false);
+const viewerIndex = ref(0);
+const viewerRect = ref<DOMRect | null>(null);
+const revealed = ref(new Set<string>());
+const hidden = useNsfwHidden();
+const viewerItems = computed<ViewerItem[]>(() =>
+  images.value.map((img) => ({ src: img.url, alt: detail.data.value?.name ?? '', isVideo: img.is_video, blurred: hidden.value(img.nsfw_level) && !revealed.value.has(img.url) })),
+);
+function setRevealed(url: string, value: boolean) {
+  const next = new Set(revealed.value);
+  if (value) next.add(url);
+  else next.delete(url);
+  revealed.value = next;
+}
+function openViewer(i: number, rect: DOMRect) {
+  viewerIndex.value = i;
+  viewerRect.value = rect;
+  viewerOpen.value = true;
+}
+// Closing the dialog takes the viewer with it, and another model starts with nothing revealed.
+watch(open, (v) => !v && (viewerOpen.value = false));
+watch(
+  () => [props.source, props.modelId],
+  () => (revealed.value = new Set()),
+);
 
 async function copy(text: string) {
   await navigator.clipboard?.writeText(text);
@@ -51,8 +79,17 @@ async function copy(text: string) {
       </div>
 
       <div v-if="images.length" class="gallery">
-        <div v-for="img in images" :key="img.url" class="shot">
-          <PreviewImage :src="img.url" :alt="detail.data.value.name" :nsfw-level="img.nsfw_level" :is-video="img.is_video" />
+        <div v-for="(img, i) in images" :key="img.url" class="shot">
+          <PreviewImage
+            :src="img.url"
+            :alt="detail.data.value.name"
+            :nsfw-level="img.nsfw_level"
+            :is-video="img.is_video"
+            :open-label="t('detail.viewImage')"
+            :revealed="revealed.has(img.url)"
+            @update:revealed="setRevealed(img.url, $event)"
+            @open="openViewer(i, $event)"
+          />
         </div>
       </div>
 
@@ -99,6 +136,16 @@ async function copy(text: string) {
       </template>
       <p v-if="detail.data.value.license" class="type-body-small muted">{{ t('detail.license') }}: {{ detail.data.value.license }}</p>
     </div>
+    <ImageViewer
+      v-model:open="viewerOpen"
+      v-model:index="viewerIndex"
+      :items="viewerItems"
+      :from-rect="viewerRect"
+      :close-label="t('common.close')"
+      :previous-label="t('detail.previousImage')"
+      :next-label="t('detail.nextImage')"
+      @reveal="setRevealed(images[$event].url, true)"
+    />
   </AppDialog>
 </template>
 

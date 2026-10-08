@@ -43,6 +43,7 @@ import {
   icons,
   type MenuItem,
   useElementHeight,
+  useLayer,
   useMediaQuery,
   useSnackbar,
 } from '@/ui';
@@ -81,11 +82,19 @@ const head = ref<HTMLElement | null>(null);
 const headHeight = useElementHeight(head);
 const drawerOpen = computed(() => narrow.value && sideOpen.value);
 const belowHead = computed(() => ({ top: `${headHeight.value}px` }));
-const onDrawerKey = (event: KeyboardEvent) => event.key === 'Escape' && !event.defaultPrevented && (sideOpen.value = false);
-watch(drawerOpen, (open) => (open ? document.addEventListener('keydown', onDrawerKey) : document.removeEventListener('keydown', onDrawerKey)));
-onActivated(() => drawerOpen.value && document.addEventListener('keydown', onDrawerKey));
-onDeactivated(() => document.removeEventListener('keydown', onDrawerKey));
-onBeforeUnmount(() => document.removeEventListener('keydown', onDrawerKey));
+// A layer, so Escape in a dialog opened above the drawer closes only the dialog. A view kept
+// alive in the background must not hold the keyboard.
+const onScreen = ref(true);
+onActivated(() => (onScreen.value = true));
+onDeactivated(() => (onScreen.value = false));
+useLayer(
+  () => drawerOpen.value && onScreen.value,
+  (event) => {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    sideOpen.value = false;
+  },
+);
 
 /**
  * A root with no kind hint holds a whole model directory; one with a hint is dedicated to a

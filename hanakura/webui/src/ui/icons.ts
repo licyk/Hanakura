@@ -10,6 +10,7 @@ export {
   Box,
   Check,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   CircleHelp,
   Copy,

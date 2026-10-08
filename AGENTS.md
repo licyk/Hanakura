@@ -516,6 +516,21 @@ into one column, rows of controls wrap, and long names get `overflow-wrap: anywh
 the image gallery scrolls sideways, and nested vertical scroll areas are dropped below 600 px so
 the sheet itself takes the gesture.
 
+**Overlays are layers (`ui/layers.ts`).** A dialog, a side sheet, an anchored menu, the
+Library's drawer and the image viewer each register with `useLayer` while open instead of
+listening on the document themselves, and only the topmost receives keys: one Escape closes one
+layer, and a dialog's Tab trap cannot pull focus out of the viewer above it. A handled key is
+`preventDefault`-ed, and a key something inside the layer already claimed is left alone. A
+kept-alive view gives up its layer while hidden.
+
+**Model images open larger.** `PreviewImage` with `openLabel` lays a button over the picture (a
+sibling, since the NSFW reveal button cannot sit inside it) and emits `open` with its rectangle;
+`ui/ImageViewer.vue` grows from it above the dialog, at z-index 45/46 — over dialogs, under the
+snackbar. Browse's detail dialog passes its gallery (arrows, Home/End, swipe; a click on an image
+larger than the window shows its real size), and a reveal in the gallery or the viewer holds in
+both. The Library's info dialog shows the preview file itself (`previewUrl(…, 0)`). Closing a
+dialog closes its viewer.
+
 **A path cut at its start goes through `ui/PathText.vue`.** The left-side ellipsis comes from
 `direction: rtl`, but a leading `/` has no direction of its own, so in a right-to-left line it is
 drawn at the far end: `/root/model` read `root/model/`. PathText isolates the path as

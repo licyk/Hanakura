@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, ref, watch, type Component } from 'vue';
 import AppIcon from '@/ui/AppIcon.vue';
+import { useLayer } from '@/ui/layers';
 
 export interface MenuItem {
   id: string;
@@ -53,6 +54,7 @@ const onDoc = (e: Event) => {
 };
 const onKey = (e: KeyboardEvent) => {
   if (e.key === 'Escape') {
+    e.preventDefault();
     open.value = false;
     return;
   }
@@ -63,12 +65,12 @@ const onKey = (e: KeyboardEvent) => {
     e.preventDefault();
   }
 };
+useLayer(() => open.value, onKey);
 const onReflow = () => (open.value ? place() : undefined);
 
 watch(open, async (v) => {
   if (v) {
     document.addEventListener('pointerdown', onDoc);
-    document.addEventListener('keydown', onKey);
     // Capture, so scrolling in any container keeps the menu on its trigger.
     window.addEventListener('scroll', onReflow, true);
     window.addEventListener('resize', onReflow);
@@ -77,7 +79,6 @@ watch(open, async (v) => {
     list.value?.querySelector<HTMLButtonElement>('button:not([disabled])')?.focus();
   } else {
     document.removeEventListener('pointerdown', onDoc);
-    document.removeEventListener('keydown', onKey);
     window.removeEventListener('scroll', onReflow, true);
     window.removeEventListener('resize', onReflow);
   }
@@ -85,7 +86,6 @@ watch(open, async (v) => {
 onBeforeUnmount(() => {
   open.value = false;
   document.removeEventListener('pointerdown', onDoc);
-  document.removeEventListener('keydown', onKey);
   window.removeEventListener('scroll', onReflow, true);
   window.removeEventListener('resize', onReflow);
 });
