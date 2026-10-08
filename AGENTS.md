@@ -71,7 +71,7 @@ JSON and the CLI's `--json` have the same shape.
 **Pydantic compatibility:** the dependency has no version constraint. `core/record.py` supplies
 the project's v2-style model methods and computed-property serialization on native v1 models;
 v2 uses its own. Keep nested events, `can_pause`, persistence exclusions and hash validation
-working on both. Pydantic v1 needs Python 3.10–3.13 and FastAPI <0.126, and the release workflow
+working on both. Pydantic v1 needs Python 3.10–3.13 and FastAPI <0.126, and CI
 tests it separately there, ty included. Run `check` and generate the committed API types under
 v2: v1's JSON Schema differs and cannot tell a validation schema from a serialization one.
 
@@ -92,8 +92,13 @@ There is no Makefile on purpose: this project is developed on Windows as often a
 The web UI uses **bun**. **`python scripts/dev.py check` is what CI runs, and it must pass before
 you call a change done.**
 
+**CI** (`.github/workflows/ci.yml`) runs every check above on a push to `main`, a pull request
+or by hand. Release calls it as its checks (`workflow_call`), so a push to `main` that changes
+`hanakura/version.py` would run them twice; its `gate` job skips CI's own run of such a push
+(inside the call `github.workflow` is "Release", so the gate passes there).
+
 **Releasing** (`.github/workflows/release.yml`) runs on a push to `main` changing
-`hanakura/version.py`, on a `v*` tag, or by hand: every check above, then the wheel is built
+`hanakura/version.py`, on a `v*` tag, or by hand: `ci.yml`, then the wheel is built
 with the UI inside it and verified (UI present, rules present, installs, runs), and only then
 published to PyPI with Twine on the runner — `TWINE_USERNAME=__token__`, the `TWINE_PASSWORD`
 secret, no OIDC, `--skip-existing --non-interactive`. A tag must match `hanakura/version.py`;

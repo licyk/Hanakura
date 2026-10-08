@@ -1,6 +1,7 @@
 name: Release
 
-# Version changes on main, version tags and manual runs publish to PyPI after all checks pass.
+# Version changes on main, version tags and manual runs publish to PyPI after the checks in
+# ci.yml pass.
 # Tag-triggered runs also verify the tag matches hanakura/version.py.
 on:
   push:
@@ -17,81 +18,17 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # scripts/build_wheel.py reads this: the type-check runs as its own job below.
+  # scripts/build_wheel.py reads this: the web type-check runs in ci.yml.
   CI: '1'
 
 jobs:
-  python:
-    name: Python ${{ matrix.python }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python: ['3.10', '3.11', '3.12', '3.13', '3.14']
-    steps:
-      - uses: actions/checkout@v7.0.1
-      - uses: actions/setup-python@v7.0.0
-        with:
-          python-version: ${{ matrix.python }}
-          cache: pip
-      - run: python -m pip install --upgrade pip
-      - run: pip install -e ".[dev]"
-      - name: Lint
-        run: |
-          python -m ruff check hanakura tests scripts
-          python -m ruff format --check hanakura tests scripts
-      - name: Tests
-        run: python -m pytest -q
-      - name: Python types (ty)
-        run: python scripts/dev.py typecheck-py --python-version "${{ matrix.python }}" --output-format github --no-progress
-
-  pydantic-v1:
-    name: Pydantic v1 / Python ${{ matrix.python }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        # Pydantic v1 does not support Python 3.14.
-        python: ['3.10', '3.13']
-    steps:
-      - uses: actions/checkout@v7.0.1
-      - uses: actions/setup-python@v7.0.0
-        with:
-          python-version: ${{ matrix.python }}
-          cache: pip
-      - run: python -m pip install --upgrade pip
-      - run: pip install -e ".[dev]" "pydantic<2" "fastapi<0.126"
-      - name: Tests
-        run: python -m pytest -q
-      - name: Python types (ty)
-        run: python scripts/dev.py typecheck-py --python-version "${{ matrix.python }}" --output-format github --no-progress
-
-  web:
-    name: Web UI
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7.0.1
-      - uses: actions/setup-python@v7.0.0
-        with:
-          python-version: '3.11'
-          cache: pip
-      - uses: oven-sh/setup-bun@v2.2.0
-        with:
-          bun-version: latest
-      - run: pip install -e ".[dev]"
-      - run: bun install --frozen-lockfile
-        working-directory: hanakura/webui
-      - name: Tests and type-check
-        run: |
-          bun run test
-          bun run typecheck
-        working-directory: hanakura/webui
-      - name: The committed API types match the schema
-        run: python scripts/dev.py typegen-check
+  checks:
+    name: Checks
+    uses: ./.github/workflows/ci.yml
 
   build:
     name: Build the wheel
-    needs: [python, pydantic-v1, web]
+    needs: [checks]
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}

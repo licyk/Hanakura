@@ -58,7 +58,7 @@ python -m pip install hanakura "pydantic<2" "fastapi<0.126"
 ```
 
 Python 3.14 及更新版本需要 Pydantic v2。开发检查和仓库中提交的网页 API 类型均使用 Pydantic v2
-生成；发布流程还会单独测试 Pydantic v1。
+生成；CI 还会单独测试 Pydantic v1。
 
 ## 命令行
 

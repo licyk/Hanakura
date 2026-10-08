@@ -1,0 +1,103 @@
+name: CI
+
+# Lint, tests, ty and the web UI on pushes to main and pull requests. Release runs this file as its
+# checks before it builds and publishes.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+# github.workflow is the caller's name when Release runs this file, so the two runs never share a
+# group (and one never cancels the other).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # A push to main that changes hanakura/version.py starts Release, which runs this file as its
+  # checks; CI's own run of that push skips this job, and with it every job below. github.workflow
+  # is "Release" inside that call, so the call itself always runs.
+  gate:
+    name: Not checked by Release
+    if: >-
+      github.workflow != 'CI' || github.event_name != 'push' ||
+      !contains(toJSON(github.event.commits.*.modified), '"hanakura/version.py"')
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'true'
+
+  python:
+    name: Python ${{ matrix.python }}
+    needs: gate
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.10', '3.11', '3.12', '3.13', '3.14']
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e ".[dev]"
+      - name: Lint
+        run: |
+          python -m ruff check hanakura tests scripts
+          python -m ruff format --check hanakura tests scripts
+      - name: Tests
+        run: python -m pytest -q
+      - name: Python types (ty)
+        run: python scripts/dev.py typecheck-py --python-version "${{ matrix.python }}" --output-format github --no-progress
+
+  pydantic-v1:
+    name: Pydantic v1 / Python ${{ matrix.python }}
+    needs: gate
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Pydantic v1 does not support Python 3.14.
+        python: ['3.10', '3.13']
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e ".[dev]" "pydantic<2" "fastapi<0.126"
+      - name: Tests
+        run: python -m pytest -q
+      - name: Python types (ty)
+        run: python scripts/dev.py typecheck-py --python-version "${{ matrix.python }}" --output-format github --no-progress
+
+  web:
+    name: Web UI
+    needs: gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.11'
+          cache: pip
+      - uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version: latest
+      - run: pip install -e ".[dev]"
+      - run: bun install --frozen-lockfile
+        working-directory: hanakura/webui
+      - name: Tests and type-check
+        run: |
+          bun run test
+          bun run typecheck
+        working-directory: hanakura/webui
+      - name: The committed API types match the schema
+        run: python scripts/dev.py typegen-check
