@@ -95,7 +95,10 @@ def test_civitai_detail_and_identify(make):
         ),
         # The older single level includes every use below it.
         ({"allowCommercialUse": "Rent"}, [("sell_images", True), ("rent", True), ("generate_on_civitai", True), ("sell_model", False)]),
-        ({"allowCommercialUse": ["None"], "allowNoCredit": False}, [("credit", False), ("sell_images", False), ("rent", False), ("generate_on_civitai", False), ("sell_model", False)]),
+        (
+            {"allowCommercialUse": ["None"], "allowNoCredit": False},
+            [("credit", False), ("sell_images", False), ("rent", False), ("generate_on_civitai", False), ("sell_model", False)],
+        ),
         # Missing fields are unknown, not forbidden.
         ({}, []),
     ],
