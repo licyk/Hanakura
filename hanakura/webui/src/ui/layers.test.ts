@@ -1,5 +1,5 @@
 import { mount } from '@vue/test-utils';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, nextTick, ref } from 'vue';
 import AppDialog from '@/ui/AppDialog.vue';
 import ImageViewer from '@/ui/ImageViewer.vue';
@@ -114,16 +114,21 @@ describe('ImageViewer', () => {
     return wrapper;
   };
   const shown = () => document.querySelector<HTMLImageElement>('.viewer img')?.getAttribute('src');
+  // happy-dom runs no transitions; with reduced motion a slide lands at once, as it does for such users.
+  const reduceMotion = () => vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => ({ matches: query.includes('reduce') }) as MediaQueryList);
+  const settled = () => new Promise((resolve) => setTimeout(resolve));
+  afterEach(() => vi.restoreAllMocks());
 
   it('moves with the arrows, wrapping at either end, and jumps with Home and End', async () => {
+    reduceMotion();
     const wrapper = viewer();
     await nextTick();
     expect(shown()).toBe('a.png');
     press('ArrowLeft');
-    await nextTick();
+    await settled();
     expect(wrapper.props('index')).toBe(2);
     press('ArrowRight');
-    await nextTick();
+    await settled();
     expect(wrapper.props('index')).toBe(0);
     press('End');
     await nextTick();
@@ -132,6 +137,20 @@ describe('ImageViewer', () => {
     await nextTick();
     expect(wrapper.props('index')).toBe(0);
     expect(document.querySelector('.counter')?.textContent).toBe('1 / 3');
+  });
+
+  it('slides to the neighbour, and a press during a slide lands it and steps on', async () => {
+    const wrapper = viewer();
+    await nextTick();
+    press('ArrowRight');
+    await nextTick();
+    // The page is on its way out; the step comes when it has left.
+    expect(document.querySelector('.slide')?.classList.contains('swipe-out')).toBe(true);
+    expect(wrapper.props('index')).toBe(0);
+    press('ArrowRight');
+    await nextTick();
+    expect(wrapper.props('index')).toBe(2);
+    expect(document.querySelector('.slide')?.classList.contains('swipe-out')).toBe(false);
   });
 
   it('hides the arrows and the counter for a single image', async () => {
@@ -162,6 +181,103 @@ describe('ImageViewer', () => {
   it('closes itself when the list it shows becomes empty', async () => {
     const wrapper = viewer();
     await wrapper.setProps({ items: [] });
+    expect(wrapper.emitted('update:open')?.[0]).toEqual([false]);
+  });
+
+  /** Lays the stage out at ``w``×``h`` with 64 px gutters, then loads an image of ``iw``×``ih``. */
+  async function layOut(w: number, h: number, iw: number, ih: number) {
+    const size = (el: Element, width: number, height: number) => {
+      Object.defineProperty(el, 'clientWidth', { configurable: true, value: width });
+      Object.defineProperty(el, 'clientHeight', { configurable: true, value: height });
+    };
+    size(document.querySelector('.stage')!, w, h);
+    size(document.querySelector('.fit-area.measure')!, w - 128, h - 128);
+    const img = document.querySelector<HTMLImageElement>('.viewer img')!;
+    Object.defineProperty(img, 'naturalWidth', { configurable: true, value: iw });
+    Object.defineProperty(img, 'naturalHeight', { configurable: true, value: ih });
+    img.dispatchEvent(new Event('load'));
+    await nextTick();
+    return img;
+  }
+  /** Where the image is drawn, to the pixel: [left, top, width, height]. */
+  const placed = (img: HTMLImageElement) => {
+    const [x, y] = [...img.style.transform.matchAll(/-?[\d.]+/g)].map((m) => Math.round(Number(m[0])));
+    return [x, y, Math.round(parseFloat(img.style.width)), Math.round(parseFloat(img.style.height))];
+  };
+  const pointer = (el: Element, type: string, x: number, y: number) =>
+    el.dispatchEvent(new PointerEvent(type, { pointerId: 1, pointerType: 'mouse', button: 0, clientX: x, clientY: y, bubbles: true }));
+
+  it('fits a tall image in a wide window by its height, centred', async () => {
+    viewer();
+    await nextTick();
+    const img = await layOut(1600, 900, 800, 1600);
+    // 772 / 1600 of its size: as tall as the window less the gutters, no wider than that allows.
+    expect(placed(img)).toEqual([607, 64, 386, 772]);
+  });
+
+  it('zooms to the actual size on a double-click and pans with a mouse drag', async () => {
+    const wrapper = viewer();
+    await nextTick();
+    const img = await layOut(1600, 900, 800, 1600);
+    img.dispatchEvent(new MouseEvent('dblclick', { clientX: 800, clientY: 450, bubbles: true }));
+    await nextTick();
+    // The point under the pointer stays put: the image's middle, at the stage's middle.
+    expect(placed(img)).toEqual([400, -350, 800, 1600]);
+
+    pointer(img, 'pointerdown', 800, 450);
+    pointer(img, 'pointermove', 850, 350);
+    pointer(img, 'pointerup', 850, 350);
+    img.click();
+    await nextTick();
+    expect(placed(img)).toEqual([450, -450, 800, 1600]);
+    // The click that ends a drag neither closes the viewer nor moves to another image.
+    expect(wrapper.emitted('update:open')).toBeUndefined();
+    expect(wrapper.props('index')).toBe(0);
+
+    press('0');
+    await nextTick();
+    expect(placed(img)).toEqual([607, 64, 386, 772]);
+  });
+
+  it('zooms with the wheel and the keys', async () => {
+    viewer();
+    await nextTick();
+    const img = await layOut(1600, 900, 800, 1600);
+    document.querySelector('.stage')!.dispatchEvent(new WheelEvent('wheel', { deltaY: -200, clientX: 800, clientY: 450, bubbles: true, cancelable: true }));
+    await nextTick();
+    expect(placed(img)[3]).toBeGreaterThan(772);
+    press('0');
+    press('+');
+    await nextTick();
+    expect(placed(img)[3]).toBe(965);
+  });
+
+  it('moves to the next image when a fitted one is dragged sideways', async () => {
+    reduceMotion();
+    const wrapper = viewer();
+    await nextTick();
+    const img = await layOut(1600, 900, 800, 1600);
+    pointer(img, 'pointerdown', 900, 450);
+    pointer(img, 'pointermove', 700, 455);
+    pointer(img, 'pointerup', 700, 455);
+    img.click();
+    await settled();
+    expect(wrapper.props('index')).toBe(1);
+    expect(wrapper.emitted('update:open')).toBeUndefined();
+  });
+
+  it('closes on a click beside the image after a drag only when the click is a new one', async () => {
+    const wrapper = viewer();
+    await nextTick();
+    const stage = document.querySelector<HTMLElement>('.stage')!;
+    pointer(stage, 'pointerdown', 10, 10);
+    pointer(stage, 'pointermove', 10, 200);
+    pointer(stage, 'pointerup', 10, 200);
+    stage.click();
+    expect(wrapper.emitted('update:open')).toBeUndefined();
+    pointer(stage, 'pointerdown', 10, 10);
+    pointer(stage, 'pointerup', 10, 10);
+    stage.click();
     expect(wrapper.emitted('update:open')?.[0]).toEqual([false]);
   });
 });

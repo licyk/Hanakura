@@ -38,6 +38,8 @@ export {
   Library,
   Link,
   Loader2,
+  Maximize2,
+  Minimize2,
   Moon,
   MoreVertical,
   Move,
@@ -58,4 +60,6 @@ export {
   Trash2,
   Upload,
   X,
+  ZoomIn,
+  ZoomOut,
 } from '@lucide/vue';

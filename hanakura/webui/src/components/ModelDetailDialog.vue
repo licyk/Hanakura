@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { useModelDetail } from '@/api/queries/sources';
 import type { ModelFile } from '@/api/types';
 import MarkdownContent from '@/components/MarkdownContent.vue';
+import ModelLicense from '@/components/ModelLicense.vue';
 import PreviewImage from '@/components/PreviewImage.vue';
 import { useNsfwHidden } from '@/components/nsfw';
 import { formatBytes, formatCount } from '@/format';
@@ -126,6 +127,8 @@ async function copy(text: string) {
         </ul>
       </section>
 
+      <ModelLicense :license="detail.data.value.license" :permissions="detail.data.value.permissions" />
+
       <template v-if="detail.data.value.description">
         <Divider />
         <section>
@@ -134,7 +137,6 @@ async function copy(text: string) {
           <MarkdownContent :text="detail.data.value.description" class="description" />
         </section>
       </template>
-      <p v-if="detail.data.value.license" class="type-body-small muted">{{ t('detail.license') }}: {{ detail.data.value.license }}</p>
     </div>
     <ImageViewer
       v-model:open="viewerOpen"
@@ -144,6 +146,10 @@ async function copy(text: string) {
       :close-label="t('common.close')"
       :previous-label="t('detail.previousImage')"
       :next-label="t('detail.nextImage')"
+      :zoom-in-label="t('detail.zoomIn')"
+      :zoom-out-label="t('detail.zoomOut')"
+      :fit-label="t('detail.fitImage')"
+      :actual-size-label="t('detail.actualSize')"
       @reveal="setRevealed(images[$event].url, true)"
     />
   </AppDialog>

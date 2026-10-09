@@ -68,6 +68,22 @@ export default {
     viewImage: 'View larger',
     previousImage: 'Previous image',
     nextImage: 'Next image',
+    zoomIn: 'Zoom in',
+    zoomOut: 'Zoom out',
+    fitImage: 'Fit to window',
+    actualSize: 'Actual size',
+    allowed: 'Allowed',
+    notAllowed: 'Not allowed',
+    // Civitai's own wording, so a reader who knows its model page recognises each line.
+    permissions: {
+      credit: 'Use without crediting the creator',
+      sell_images: 'Sell images it generates',
+      rent: 'Run on services that generate images for money',
+      generate_on_civitai: 'Run on Civitai',
+      derivatives: 'Share merges using this model',
+      sell_model: 'Sell this model or merges using it',
+      different_license: 'Share merges under different permissions',
+    },
   },
   dest: {
     title: 'Download to',

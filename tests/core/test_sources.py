@@ -78,6 +78,37 @@ def test_civitai_detail_and_identify(make):
     assert results[0].source == "civitai" and results[0].model.name == "Detail Tweaker"
 
 
+@pytest.mark.parametrize(
+    ("fields", "expected"),
+    [
+        (
+            {"allowNoCredit": True, "allowCommercialUse": ["Image", "RentCivit"], "allowDerivatives": True, "allowDifferentLicense": False},
+            [
+                ("credit", True),
+                ("sell_images", True),
+                ("rent", False),
+                ("generate_on_civitai", True),
+                ("derivatives", True),
+                ("sell_model", False),
+                ("different_license", False),
+            ],
+        ),
+        # The older single level includes every use below it.
+        ({"allowCommercialUse": "Rent"}, [("sell_images", True), ("rent", True), ("generate_on_civitai", True), ("sell_model", False)]),
+        ({"allowCommercialUse": ["None"], "allowNoCredit": False}, [("credit", False), ("sell_images", False), ("rent", False), ("generate_on_civitai", False), ("sell_model", False)]),
+        # Missing fields are unknown, not forbidden.
+        ({}, []),
+    ],
+)
+def test_civitai_permissions(make, fields, expected):
+    def handler(request):
+        return httpx.Response(200, json={**CIVITAI_MODEL, **fields})
+
+    detail = make(handler).sources.get_model("civitai", "7")
+    assert [(p.id, p.allowed) for p in detail.permissions] == expected
+    assert detail.license is None
+
+
 def test_openmodeldb_local_search(make):
     index = {
         "4x-ultrasharp": {

@@ -12,9 +12,11 @@ from hanakura.core.sources.models import (
     ModelDetail,
     ModelFile,
     ModelImage,
+    ModelPermission,
     ModelStats,
     ModelSummary,
     ModelVersion,
+    PermissionId,
     SearchPage,
     SearchQuery,
     SourceCapabilities,
@@ -76,6 +78,39 @@ def _image(img: dict[str, Any]) -> ModelImage:
         height=img.get("height"),
         is_video=img.get("type") == "video",
     )
+
+
+# Older answers name one commercial level, each including the ones before it; newer ones list every use.
+_COMMERCIAL_LEVELS = {
+    "none": set(),
+    "image": {"Image"},
+    "rentcivit": {"Image", "RentCivit"},
+    "rent": {"Image", "RentCivit", "Rent"},
+    "sell": {"Image", "RentCivit", "Rent", "Sell"},
+}
+
+
+def _commercial_uses(value: Any) -> set[str] | None:
+    if isinstance(value, list):
+        return {str(v) for v in value}
+    if isinstance(value, str):
+        return _COMMERCIAL_LEVELS.get(value.lower())
+    return None
+
+
+def _permissions(m: dict[str, Any]) -> list[ModelPermission]:
+    """The model's permissions in the order Civitai's own page lists them; a field the answer lacks is left out rather than read as forbidden."""
+    uses = _commercial_uses(m.get("allowCommercialUse"))
+    flags: list[tuple[PermissionId, Any]] = [
+        ("credit", m.get("allowNoCredit")),
+        ("sell_images", None if uses is None else "Image" in uses),
+        ("rent", None if uses is None else "Rent" in uses),
+        ("generate_on_civitai", None if uses is None else "RentCivit" in uses),
+        ("derivatives", m.get("allowDerivatives")),
+        ("sell_model", None if uses is None else "Sell" in uses),
+        ("different_license", m.get("allowDifferentLicense")),
+    ]
+    return [ModelPermission(id=pid, allowed=allowed) for pid, allowed in flags if isinstance(allowed, bool)]
 
 
 class CivitaiAdapter(SourceAdapter):
@@ -177,12 +212,11 @@ class CivitaiAdapter(SourceAdapter):
                     images=[_image(i) for i in v.get("images") or []],
                 )
             )
-        license_flags = {k: m.get(k) for k in ("allowCommercialUse", "allowDerivatives", "allowNoCredit", "allowDifferentLicense") if k in m}
         return ModelDetail(
             **summary.model_dump(),
             description=m.get("description"),
             versions=versions,
-            license=", ".join(f"{k}={v}" for k, v in license_flags.items()) or None,
+            permissions=_permissions(m),
             trained_words=versions[0].trained_words if versions else [],
             images=versions[0].images if versions else [],
             raw=None,

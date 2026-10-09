@@ -1431,6 +1431,8 @@ export interface components {
             versions: components["schemas"]["ModelVersion"][];
             /** License */
             license: string | null;
+            /** Permissions */
+            permissions: components["schemas"]["ModelPermission"][];
             /** Trained Words */
             trained_words: string[];
             /** Images */
@@ -1547,6 +1549,19 @@ export interface components {
             civitai_info: {
                 [key: string]: unknown;
             } | null;
+        };
+        /**
+         * ModelPermission
+         * @description One use the creator allows or forbids; ``credit`` means use without crediting them.
+         */
+        ModelPermission: {
+            /**
+             * Id
+             * @enum {string}
+             */
+            id: "credit" | "sell_images" | "rent" | "generate_on_civitai" | "derivatives" | "sell_model" | "different_license";
+            /** Allowed */
+            allowed: boolean;
         };
         /** ModelRoot */
         ModelRoot: {

@@ -7,6 +7,7 @@ export type SettingsView = S['SettingsView'];
 export type SourceInfo = S['SourceInfo'];
 export type ModelSummary = S['ModelSummary'];
 export type ModelDetail = S['ModelDetail'];
+export type ModelPermission = S['ModelPermission'];
 export type ModelVersion = S['ModelVersion'];
 export type ModelFile = S['ModelFile'];
 export type SearchPage = S['SearchPage'];

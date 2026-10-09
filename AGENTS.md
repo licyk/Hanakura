@@ -341,7 +341,11 @@ and declare `capabilities` so the filter bar only offers filters that work.
 - **Civitai** (`https://civitai.com/api/v1`): cursor pagination; `downloadUrl` answers 307 to a
   signed storage link; the token goes in `Authorization: Bearer`, never in a URL, and httpx drops
   it when the redirect leaves civitai.com; `GET /model-versions/by-hash/{sha256}` identifies a
-  local file. Rate limits are undocumented, so honour 429 and `Retry-After`.
+  local file. Rate limits are undocumented, so honour 429 and `Retry-After`. Its licence is a set of
+  flags, not a name: `ModelDetail.permissions` lists them in the order Civitai's page does
+  (`allowCommercialUse` is a list of uses, or in older answers one level that includes those
+  below it), a missing field is left out rather than read as forbidden, and `license` stays for
+  sources with a named licence. `components/ModelLicense.vue` shows both.
 - **OpenModelDB:** one JSON file of upscalers, fetched once and cached, searched locally. Skip
   mega.nz and Google Drive links; verify the published SHA256.
 - **GitHub Releases:** a curated repository list plus any `owner/repo` typed in; no search.
@@ -531,10 +535,20 @@ kept-alive view gives up its layer while hidden.
 **Model images open larger.** `PreviewImage` with `openLabel` lays a button over the picture (a
 sibling, since the NSFW reveal button cannot sit inside it) and emits `open` with its rectangle;
 `ui/ImageViewer.vue` grows from it above the dialog, at z-index 45/46 — over dialogs, under the
-snackbar. Browse's detail dialog passes its gallery (arrows, Home/End, swipe; a click on an image
-larger than the window shows its real size), and a reveal in the gallery or the viewer holds in
-both. The Library's info dialog shows the preview file itself (`previewUrl(…, 0)`). Closing a
-dialog closes its viewer.
+snackbar. Browse's detail dialog passes its gallery (arrows, Home/End), and a reveal in the
+gallery or the viewer holds in both. The Library's info dialog shows the preview file itself
+(`previewUrl(…, 0)`). Closing a dialog closes its viewer.
+
+The viewer's interaction and slide are Hanaikada's: the wheel, a pinch, a double-click and the
+`+ - 0 1` keys zoom about the pointer, dragging pans a zoomed image with mouse or finger, and a
+sideways drag of a fitted one pulls the page along before it slides out and the neighbour slides
+in (`swipe-out`/`swipe-in` in `motion.css`); the arrows play the same slide, and a press during
+one lands it and steps on. The image is placed by script — size and `translate` from the measured
+stage and an invisible `.fit-area` that carries the gutters for the bar and the arrows — never by
+percentage `max-height`, which inside a grid resolved against a row the image itself had grown, so
+a tall image in a wide window overflowed it. A click beside the image closes, but not the click
+that ends a drag. Two steps in one tick are one change of `index`: the `v-model` prop catches up
+only when the owner renders.
 
 **A path cut at its start goes through `ui/PathText.vue`.** The left-side ellipsis comes from
 `direction: rtl`, but a leading `/` has no direction of its own, so in a right-to-left line it is

@@ -1,7 +1,7 @@
 """Records shared by every searchable source."""
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field
 
@@ -100,10 +100,22 @@ class ModelVersion(Record):
     images: list[ModelImage] = Field(default_factory=list)
 
 
+PermissionId = Literal["credit", "sell_images", "rent", "generate_on_civitai", "derivatives", "sell_model", "different_license"]
+
+
+class ModelPermission(Record):
+    """One use the creator allows or forbids; ``credit`` means use without crediting them."""
+
+    id: PermissionId
+    allowed: bool
+
+
 class ModelDetail(ModelSummary):
     description: str | None = None
     versions: list[ModelVersion] = Field(default_factory=list)
+    # A named licence (OpenModelDB's SPDX ids); Civitai has none and lists ``permissions`` instead.
     license: str | None = None
+    permissions: list[ModelPermission] = Field(default_factory=list)
     trained_words: list[str] = Field(default_factory=list)
     images: list[ModelImage] = Field(default_factory=list)
     raw: dict[str, Any] | None = None

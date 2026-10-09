@@ -61,6 +61,11 @@
 .scrim-enter-from,
 .scrim-leave-to { opacity: 0; }
 
+/* swipe: the image viewer's page follows a pointer (no transition while dragging), then leaves with
+   swipe-out, and its neighbour arrives with swipe-in; swipe-in also snaps a short drag back. */
+.swipe-out { transition: transform var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-emphasized-accelerate); }
+.swipe-in { transition: transform var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-emphasized-decelerate); }
+
 /* list: cards added, removed or reordered (TransitionGroup). Stagger comes from --stagger. */
 .list-move { transition: transform var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-emphasized); }
 .list-enter-active {

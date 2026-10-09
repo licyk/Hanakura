@@ -179,7 +179,16 @@ const rows = computed(() => {
         <p class="type-body-medium muted">{{ entry.companions.join(', ') }}</p>
       </section>
     </template>
-    <ImageViewer v-model:open="viewerOpen" :items="viewerItems" :from-rect="viewerRect" :close-label="t('common.close')" />
+    <ImageViewer
+      v-model:open="viewerOpen"
+      :items="viewerItems"
+      :from-rect="viewerRect"
+      :close-label="t('common.close')"
+      :zoom-in-label="t('detail.zoomIn')"
+      :zoom-out-label="t('detail.zoomOut')"
+      :fit-label="t('detail.fitImage')"
+      :actual-size-label="t('detail.actualSize')"
+    />
   </AppDialog>
 </template>
 
