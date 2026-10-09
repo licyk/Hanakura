@@ -67,14 +67,15 @@ const nav = computed<NavItem[]>(() => [
   { to: destination('/hubs'), label: t('nav.hubs'), icon: icons.Box },
   { to: destination('/direct'), label: t('nav.direct'), icon: icons.Link },
   { to: destination('/library'), label: t('nav.library'), icon: icons.Library },
-  { to: destination('/settings'), label: t('nav.settings'), icon: icons.Settings },
 ]);
+// Settings sits at the foot of the rail, in the bottom corner whatever the window's height (last in the bottom bar).
+const footer = computed<NavItem[]>(() => [{ to: destination('/settings'), label: t('nav.settings'), icon: icons.Settings }]);
 const cycleTheme = () => (prefs.prefs.theme = prefs.prefs.theme === 'light' ? 'dark' : prefs.prefs.theme === 'dark' ? 'system' : 'light');
 const themeIcon = computed(() => ({ light: icons.Sun, dark: icons.Moon, system: icons.SunMoon })[prefs.prefs.theme]);
 </script>
 
 <template>
-  <AppShell :items="nav" :title="t('app.title')">
+  <AppShell :items="nav" :footer="footer" :title="t('app.title')">
     <template #rail-top>
       <IconButton :icon="icons.Sparkles" :label="t('app.title')" tonal />
     </template>

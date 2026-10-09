@@ -470,7 +470,10 @@ unit, mostly in steps of 8.
 One motion system in `src/ui/motion/`: `fade-through` between screens, `shared-axis-x` for folders
 and tabs, `container` for card-to-dialog, `sheet` for drawers, `list` for grids (20 ms stagger,
 capped), `collapse`, `snackbar`. Under `prefers-reduced-motion` everything becomes a short fade and
-ripples are off. Navigation follows the window size classes: bottom bar below 600 px, rail above.
+ripples are off. Navigation follows the window size classes: bottom bar below 600 px, rail above
+(rvc-next's: Settings is the shell's `footer`, last in the bar and at the foot of the rail; only
+the rail's destinations scroll when the window is too short, so Settings stays in the bottom-left
+corner).
 
 **The Hubs detail pane** uses that system rather than appearing and vanishing: `shared-axis-x`
 carries it in from the right and back out (`--axis-dir` is flipped when closing), the pane leaves

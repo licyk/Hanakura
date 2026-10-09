@@ -142,3 +142,24 @@ describe('i18n and formatting', () => {
     expect(parentPath('a/b/c')).toBe('a/b');
   });
 });
+
+describe('navigation', () => {
+  async function mountRail() {
+    const { createRouter, createMemoryHistory } = await import('vue-router');
+    const { default: NavigationRail } = await import('@/ui/NavigationRail.vue');
+    const { Settings } = await import('@/ui/icons');
+    const view = { template: '<div />' };
+    const router = createRouter({ history: createMemoryHistory(), routes: ['/a', '/b', '/settings'].map((path) => ({ path, component: view })) });
+    await router.push('/settings');
+    const items = [{ to: '/a', label: 'A', icon: Settings }, { to: '/b', label: 'B', icon: Settings }];
+    return mount(NavigationRail, { props: { items, footer: [{ to: '/settings', label: 'Settings', icon: Settings }] }, global: { plugins: [router] } });
+  }
+
+  it('keeps the footer (Settings) out of the scrolling destinations, at the foot of the rail', async () => {
+    const rail = await mountRail();
+    const parts = rail.find('nav').element.children;
+    expect([...parts].map((el) => el.className)).toEqual(['top', 'dests', 'foot']);
+    expect(rail.find('.dests').text()).not.toContain('Settings');
+    expect(rail.find('.foot a').attributes('aria-current')).toBe('page');
+  });
+});
