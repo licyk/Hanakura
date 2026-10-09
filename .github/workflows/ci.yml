@@ -62,9 +62,10 @@ jobs:
       - uses: actions/setup-python@v7.0.0
         with:
           python-version: ${{ matrix.python }}
-          cache: pip
-      - run: python -m pip install --upgrade pip
-      - run: pip install -e ".[dev]"
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+      - run: uv pip install --system -e ".[dev]"
       - name: Lint
         run: |
           python -m ruff check hanakura tests scripts
@@ -89,9 +90,10 @@ jobs:
       - uses: actions/setup-python@v7.0.0
         with:
           python-version: ${{ matrix.python }}
-          cache: pip
-      - run: python -m pip install --upgrade pip
-      - run: pip install -e ".[dev]" "pydantic<2" "fastapi<0.126"
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+      - run: uv pip install --system -e ".[dev]" "pydantic<2" "fastapi<0.126"
       - name: Tests
         run: python -m pytest -q
       - name: Python types (ty)
@@ -107,11 +109,13 @@ jobs:
       - uses: actions/setup-python@v7.0.0
         with:
           python-version: '3.11'
-          cache: pip
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
       - uses: oven-sh/setup-bun@v2.2.0
         with:
           bun-version: latest
-      - run: pip install -e ".[dev]"
+      - run: uv pip install --system -e ".[dev]"
       - run: bun install --frozen-lockfile
         working-directory: hanakura/webui
       - name: Tests and type-check
