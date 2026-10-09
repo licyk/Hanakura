@@ -24,6 +24,8 @@ classifiers = [
 ]
 dependencies = [
     "fastapi",
+    # Imported directly (static files, middleware, ASGI types), not only through FastAPI.
+    "starlette",
     "uvicorn",
     # uvicorn speaks WebSocket only when one of these is installed. Without it the socket falls
     # back to long polling, which works but is slower and noisier.
