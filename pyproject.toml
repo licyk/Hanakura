@@ -62,6 +62,7 @@ include = ["hanakura*"]
 version = { attr = "hanakura.version.VERSION" }
 
 [tool.ruff]
+include = ["hanakura/**/*.{py,pyi,ipynb}", "tests/**/*.{py,pyi,ipynb}", "scripts/**/*.{py,pyi,ipynb}"]
 line-length = 180
 indent-width = 4
 extend-exclude = ["hanakura/webui/dist", "hanakura/webui/node_modules"]

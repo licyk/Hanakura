@@ -68,8 +68,8 @@ jobs:
       - run: uv pip install --system -e ".[dev]"
       - name: Lint
         run: |
-          python -m ruff check hanakura tests scripts
-          python -m ruff format --check hanakura tests scripts
+          python -m ruff check
+          python -m ruff format --check
       - name: Tests
         run: python -m pytest -q
       - name: Python types (ty)

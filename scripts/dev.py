@@ -20,7 +20,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 WEB = ROOT / "hanakura" / "webui"
-PYTHON_PATHS = ["hanakura", "tests", "scripts"]
 SCHEMA = WEB / "src" / "api" / "schema.d.ts"
 DEFAULT_API_PORT = 7865
 DEFAULT_WEB_PORT = 5173
@@ -158,16 +157,16 @@ def _stop_all(started: list[tuple[str, subprocess.Popen[bytes]]]) -> None:
 @task("lint", "Check formatting and lint rules (ruff), changing nothing")
 def lint() -> int:
     return first_failure(
-        python("-m", "ruff", "check", *PYTHON_PATHS),
-        python("-m", "ruff", "format", "--check", *PYTHON_PATHS),
+        python("-m", "ruff", "check"),
+        python("-m", "ruff", "format", "--check"),
     )
 
 
 @task("format", "Apply ruff's safe fixes and format the Python code")
 def format_code() -> int:
     return first_failure(
-        python("-m", "ruff", "check", "--fix", *PYTHON_PATHS),
-        python("-m", "ruff", "format", *PYTHON_PATHS),
+        python("-m", "ruff", "check", "--fix"),
+        python("-m", "ruff", "format"),
     )
 
 
