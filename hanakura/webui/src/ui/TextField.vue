@@ -51,5 +51,11 @@ function onInput(event: Event) {
 </template>
 
 <style scoped>
-.text-field { width: 100%; --md-outlined-text-field-input-text-placeholder-color: var(--app-color-placeholder); }
+.text-field {
+  width: 100%;
+  /* Its own height, even in a stretching grid or row: a neighbour's supporting text must not make
+     this field's box taller, so fields side by side keep their boxes aligned. */
+  height: fit-content;
+  --md-outlined-text-field-input-text-placeholder-color: var(--app-color-placeholder);
+}
 </style>

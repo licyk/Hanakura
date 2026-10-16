@@ -10,7 +10,7 @@ import { formatBytes, formatCount, formatDate } from '@/format';
 import { useI18n } from '@/i18n';
 import { useDownloadsStore } from '@/stores/downloads';
 import { usePreferencesStore } from '@/stores/preferences';
-import { AppButton, AppIcon, Badge, EmptyState, ExpansionPanel, IconButton, SearchField, SelectField, Skeleton, Tabs, TextField, icons, useSnackbar } from '@/ui';
+import { AppButton, AppIcon, Badge, EmptyState, ExpansionPanel, FieldRow, IconButton, SearchField, SelectField, Skeleton, Tabs, TextField, icons, useSnackbar } from '@/ui';
 
 const { t, locale } = useI18n();
 const prefs = usePreferencesStore();
@@ -132,10 +132,12 @@ function queue(dest: Destination) {
         <section class="list-pane">
           <div class="controls">
             <SearchField v-model="draft" :placeholder="t('hubs.searchPlaceholder')" @search="query = $event" />
-            <div class="row">
+            <FieldRow>
               <TextField v-model="direct" :label="t('hubs.openById')" :placeholder="t('hubs.openByIdPlaceholder')" :icon="icons.Link" @enter="openDirect" />
-              <AppButton variant="tonal" :disabled="!direct.trim()" @click="openDirect">{{ t('hubs.open') }}</AppButton>
-            </div>
+              <template #end>
+                <AppButton variant="tonal" :disabled="!direct.trim()" @click="openDirect">{{ t('hubs.open') }}</AppButton>
+              </template>
+            </FieldRow>
             <SelectField v-if="sortOptions.length" v-model="sort" :label="t('hubs.sort')" :options="sortOptions" />
           </div>
 
@@ -183,10 +185,12 @@ function queue(dest: Destination) {
               {{ formatDate(repo.data.value.last_modified, locale) }}<template v-if="repo.data.value.license"> · {{ repo.data.value.license }}</template>
               · {{ formatBytes(repo.data.value.total_size) }}
             </p>
-            <div class="row">
+            <FieldRow>
               <TextField v-model="revisionDraft" :label="t('hubs.revision')" @enter="revision = revisionDraft || null" />
-              <AppButton variant="text" :icon="icons.RefreshCw" @click="revision = revisionDraft || null">{{ t('common.refresh') }}</AppButton>
-            </div>
+              <template #end>
+                <AppButton variant="text" :icon="icons.RefreshCw" @click="revision = revisionDraft || null">{{ t('common.refresh') }}</AppButton>
+              </template>
+            </FieldRow>
             <RepoFileTree v-model="selection" :files="repo.data.value.files" />
             <p class="type-body-small muted note"><AppIcon :icon="icons.Info" :size="18" /> {{ t('hubs.noPause') }}</p>
             <div class="download-row">
@@ -213,7 +217,8 @@ function queue(dest: Destination) {
 
 <style scoped>
 .hubs { display: flex; flex-direction: column; height: 100%; }
-.tabs { flex: none; border-radius: var(--md-sys-shape-corner-large) var(--md-sys-shape-corner-large) 0 0; overflow: hidden; }
+/* The rounded bar sits in the page's gutter, in line with the panes under it. */
+.tabs { flex: none; margin: var(--app-space-4) var(--app-space-6) 0; }
 /* Both states declare two tracks so the widths interpolate: the list narrows while the pane
    arrives instead of jumping under it. */
 .panes {
@@ -229,9 +234,6 @@ function queue(dest: Destination) {
   padding-right: var(--app-space-3); scrollbar-gutter: stable;
 }
 .controls { display: flex; flex-direction: column; gap: var(--app-space-2); }
-.row { display: flex; align-items: flex-start; gap: var(--app-space-2); }
-.row > :first-child { flex: 1; }
-.row :deep(md-filled-tonal-button), .row :deep(md-text-button) { margin-top: var(--app-space-2); }
 .skeletons { display: flex; flex-direction: column; gap: var(--app-space-2); }
 .repo-row {
   display: flex; align-items: center; gap: var(--app-space-3); width: 100%; padding: var(--app-space-3); border: 0; text-align: left; cursor: pointer; font: inherit;

@@ -19,3 +19,18 @@ function onChange(event: Event) {
     <md-primary-tab v-for="t in tabs" :key="t.value">{{ t.label }}</md-primary-tab>
   </md-tabs>
 </template>
+
+<style scoped>
+/* A rounded bar, as wide as its row, on the same container tone as the app's other controls; its
+   divider is dropped (the rounded box is the edge) and the indicator is a rounded pill. */
+md-tabs {
+  border-radius: var(--md-sys-shape-corner-large);
+  overflow: hidden;
+  background: var(--md-sys-color-surface-container);
+  --md-divider-color: transparent;
+  --md-primary-tab-container-color: transparent;
+  --md-primary-tab-container-shape: var(--md-sys-shape-corner-large);
+  --md-primary-tab-active-indicator-shape: var(--md-sys-shape-corner-full);
+  --md-primary-tab-active-indicator-height: 3px;
+}
+</style>

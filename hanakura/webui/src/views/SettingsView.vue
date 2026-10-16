@@ -214,7 +214,7 @@ const switchHelp = (sw: (typeof librarySwitches)[number]) => (sw.key === 'delete
 h2 { margin: 0 0 var(--app-space-2); }
 .field-row { display: flex; align-items: center; justify-content: space-between; gap: var(--app-space-4); min-height: 56px; flex-wrap: wrap; }
 .color { width: 56px; height: 40px; padding: 0; border: 1px solid var(--md-sys-color-outline); border-radius: var(--md-sys-shape-corner-small); background: transparent; cursor: pointer; }
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--app-space-3); }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--app-space-3); align-items: start; }
 .source { display: flex; flex-direction: column; gap: var(--app-space-2); }
 .roots { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--app-space-2); }
 .roots li { display: flex; align-items: center; gap: var(--app-space-2); overflow-wrap: anywhere; }

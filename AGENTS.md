@@ -563,6 +563,14 @@ Material's on-surface-variant, which sat so close to typed text that an example 
 already entered. Only the colour changes: the text field's input is in its shadow root, and an
 oblique face would not suit CJK text.
 
+**A field and its buttons go in `ui/FieldRow.vue`** (Kodama's): the `end` slot is centred on the
+field's own box (`--app-field-height`, 56px), not on the box and its supporting text, so a hint
+never pulls a button out of line (Hubs' Open and Refresh, `TokenField`'s Save and Clear). Text
+fields and selects keep their own height (`height: fit-content`) and field grids
+`align-items: start`, so fields side by side keep their boxes aligned when only one has a hint.
+`layout.test.ts` holds both. `Tabs` is a rounded bar on surface-container with a pill indicator
+and no divider; Hubs sets it in the page's gutter.
+
 **The Hubs model card opens expanded** for every repository shown, even after it was collapsed
 for the last one: it is what the repository is about.
 

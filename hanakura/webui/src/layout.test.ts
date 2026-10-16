@@ -35,6 +35,26 @@ describe('rows that hold a file name', () => {
 });
 
 /**
+ * A field and its buttons (Open, Refresh, a token's Save): the buttons centre on the field's box,
+ * not on the box and the supporting text under it, so a hint never pulls them out of line.
+ */
+describe('field rows', () => {
+  it('FieldRow centres its end on the field box alone', () => {
+    expect(rule('ui/FieldRow.vue', '.field-row')).toContain('align-items: flex-start');
+    const end = rule('ui/FieldRow.vue', '.end');
+    expect(end).toContain('align-items: center');
+    expect(end).toContain('min-height: var(--app-field-height)');
+  });
+  it.each(['views/HubsView.vue', 'ui/TokenField.vue'])('%s puts fields and their buttons in a FieldRow', (file) => {
+    expect(readFileSync(join(SRC, file), 'utf8')).toContain('<FieldRow');
+  });
+  // Fields side by side in a stretching grid keep their own boxes (Settings › Network).
+  it.each([['ui/TextField.vue', '.text-field'], ['ui/SelectField.vue', '.select']] as const)('%s keeps its own height', (file, selector) => {
+    expect(rule(file, selector)).toContain('height: fit-content');
+  });
+});
+
+/**
  * A component capped at a fixed width stops growing with the window, leaving a wide screen mostly
  * margin. Caps scale with the viewport instead (`clamp()`, `max()`); a fixed pixel cap belongs only
  * inside a media query, where the window size is already known.
