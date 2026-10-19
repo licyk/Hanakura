@@ -386,7 +386,13 @@ and declare `capabilities` so the filter bar only offers filters that work.
   single-use, live five minutes, and are bound to the browser that started them by an HttpOnly,
   SameSite=Lax cookie. Tokens go to the OS credential store when available, else an owner-only
   file. They refresh a minute before expiry, once even across threads and processes (file lock),
-  and the rotated pair is stored whole.
+  and the rotated pair is stored whole. **Never let `keyring` search its backends off macOS**
+  (`keyring.get_keyring()`, `get_all_keyring()`): the search imports its macOS backend, whose
+  `ctypes.util.find_library('Security')` runs `ld -o /dev/null`, and GNU ld deletes its output when
+  the link fails, so run as root every start deleted `/dev/null`. `store._system_keyring` uses a
+  backend the user configured (`PYTHON_KEYRING_BACKEND`, keyring's config file), else the usable
+  platform backend of highest priority (Secret Service, libsecret, KWallet; Windows Credential
+  Locker); only macOS searches.
 
 The method changes only when the user saves a manual token, completes an authorization, or asks
 explicitly. **A failure, a disconnection or an expiry must never switch method** — the other
@@ -723,11 +729,6 @@ One line each; the section in brackets explains why.
   megabytes); a mock test covers the flow, including the token being dropped on the redirect to
   storage.
 - ControlNet, embedding and upscaler detection rules have only synthetic fixtures.
-- **Run as root on Linux, opening the credential store deletes `/dev/null`.** `keyring` imports every backend to
-  choose one; its macOS backend calls `ctypes.util.find_library('Security')`, which runs `ld -t -o /dev/null
-  -lSecurity`, and GNU `ld` removes its output file when the link fails. Every `build_services()` (so every test
-  that builds services) does it; the next shell's `2>/dev/null` then leaves a regular file there. Restore it with
-  `rm /dev/null && mknod -m 666 /dev/null c 1 3`. Not yet worked around in the code.
 - hf-mirror and Gitee AI endpoints were never tested from a network that needs them.
 - Uploads — dropped files and the file picker — are covered at the API level and in unit tests,
   not by dropping or choosing a file in a real browser. Saving a library file through the

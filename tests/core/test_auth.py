@@ -9,6 +9,7 @@ from urllib.parse import parse_qs, urlsplit
 import httpx
 import pytest
 
+from hanakura.core.auth import store as store_module
 from hanakura.core.auth.oauth_client import REFRESH_MARGIN_SECONDS, ReauthorizationRequired, challenge_for, make_verifier
 from hanakura.core.auth.store import FileCredentialStore, KeyringCredentialStore, OAuthCredentials, open_store
 from hanakura.core.auth.transactions import TransactionStore
@@ -356,9 +357,6 @@ def test_keyring_is_used_when_it_works(tmp_path, monkeypatch):
         def __init__(self) -> None:
             self.values: dict[tuple[str, str], str] = {}
 
-        def get_keyring(self):
-            return self
-
         def get_password(self, service, user):
             return self.values.get((service, user))
 
@@ -369,7 +367,7 @@ def test_keyring_is_used_when_it_works(tmp_path, monkeypatch):
             del self.values[(service, user)]
 
     fake = FakeKeyring()
-    monkeypatch.setitem(__import__("sys").modules, "keyring", fake)
+    monkeypatch.setattr(store_module, "_system_keyring", lambda: fake)
     store = open_store(tmp_path)
     assert isinstance(store, KeyringCredentialStore)
     store.save(OAuthCredentials(access_token="a"))
@@ -381,14 +379,34 @@ def test_keyring_is_used_when_it_works(tmp_path, monkeypatch):
 
 def test_a_broken_keyring_falls_back_to_a_file(tmp_path, monkeypatch):
     class BrokenKeyring:
-        def get_keyring(self):
-            return self
-
         def get_password(self, *_args):
             raise RuntimeError("no secret service")
 
-    monkeypatch.setitem(__import__("sys").modules, "keyring", BrokenKeyring())
+    monkeypatch.setattr(store_module, "_system_keyring", lambda: BrokenKeyring())
     assert isinstance(open_store(tmp_path), FileCredentialStore)
+    monkeypatch.setattr(store_module, "_system_keyring", lambda: None)
+    assert isinstance(open_store(tmp_path), FileCredentialStore)
+
+
+def test_keyring_never_searches_its_backends_off_macos(monkeypatch):
+    """keyring's search imports its macOS backend, whose ctypes lookup runs ``ld -o /dev/null``; GNU ld deletes that
+    file when the link fails, so run as root it deleted /dev/null."""
+    pytest.importorskip("keyring")
+    import keyring
+    import keyring.backend
+    import keyring.core
+
+    def searched(*_args, **_kwargs):
+        raise AssertionError("keyring searched every backend")
+
+    monkeypatch.setattr(keyring.backend, "get_all_keyring", searched)
+    monkeypatch.setattr(keyring, "get_keyring", searched)
+    monkeypatch.setattr(store_module.sys, "platform", "linux")
+    monkeypatch.delenv("PYTHON_KEYRING_BACKEND", raising=False)
+    monkeypatch.setattr(keyring.core, "load_config", lambda: None)
+    store_module._system_keyring()  # whatever this machine has, found without the search
+    monkeypatch.setenv("PYTHON_KEYRING_BACKEND", "keyring.backends.null.Keyring")
+    assert type(store_module._system_keyring()).__module__ == "keyring.backends.null"  # the user's choice wins
 
 
 def test_credentials_survive_a_restart(tmp_path, provider):

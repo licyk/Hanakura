@@ -6,10 +6,12 @@ store is preferred; where there is none, a file in the data directory is used, c
 anything is written to it and readable only by its owner.
 """
 
+import importlib
 import json
 import logging
 import os
 import stat
+import sys
 import tempfile
 import threading
 import time
@@ -28,6 +30,10 @@ logger = logging.getLogger(__name__)
 KEYRING_SERVICE = "hanakura"
 KEYRING_USERNAME = "civitai-oauth"
 FILE_NAME = "civitai_oauth.json"
+
+# The credential stores keyring ships, by platform, for ``_system_keyring``; it picks the usable one of highest priority.
+WINDOWS_BACKENDS = ("keyring.backends.Windows.WinVaultKeyring",)
+UNIX_BACKENDS = ("keyring.backends.SecretService.Keyring", "keyring.backends.libsecret.Keyring", "keyring.backends.kwallet.DBusKeyring")
 
 
 class OAuthCredentials(Record):
@@ -116,10 +122,10 @@ class FileCredentialStore(CredentialStore):
 
 
 class KeyringCredentialStore(CredentialStore):
-    """The operating system's credential store, through the optional ``keyring`` package."""
+    """The operating system's credential store, through a backend of the optional ``keyring`` package."""
 
-    def __init__(self, keyring_module: Any) -> None:
-        self._keyring = keyring_module
+    def __init__(self, backend: Any) -> None:
+        self._keyring = backend
 
     def load(self) -> OAuthCredentials | None:
         raw = self._keyring.get_password(KEYRING_SERVICE, KEYRING_USERNAME)
@@ -145,17 +151,46 @@ class KeyringCredentialStore(CredentialStore):
         return "the system credential store"
 
 
+def _system_keyring() -> Any | None:
+    """The operating system's credential store as a ``keyring`` backend, or None when there is none.
+
+    Left to itself, keyring finds one by importing every backend it ships, its macOS one included, whose import
+    looks up the Security framework with ``ctypes.util.find_library``. Off macOS that runs ``ld -o /dev/null``, and
+    GNU ld removes its output file when the link fails: run as root, every start deleted ``/dev/null``. So keyring
+    searches only on macOS. Elsewhere a backend the user named (``PYTHON_KEYRING_BACKEND``, or keyring's
+    configuration file) is used, else the best usable one of those keyring ships for the platform.
+    """
+    import keyring
+    import keyring.core
+
+    if sys.platform == "darwin":
+        return keyring.get_keyring()
+    configured = keyring.core.load_env() or keyring.core.load_config()
+    if configured is not None:
+        return configured
+    usable: list[Any] = []
+    for name in WINDOWS_BACKENDS if sys.platform == "win32" else UNIX_BACKENDS:
+        module, _, cls_name = name.rpartition(".")
+        try:
+            cls = getattr(importlib.import_module(module), cls_name)
+            if cls.viable:
+                usable.append(cls())
+        except Exception:  # a backend whose libraries are missing is simply not there
+            logger.debug("Keyring backend %s is unavailable", name, exc_info=True)
+    return max(usable, key=lambda backend: backend.priority, default=None)
+
+
 def open_store(data_dir: Path, use_keyring: bool = True) -> CredentialStore:
     """Return the best store available: the system one when it works, else a private file."""
     if use_keyring:
         try:
-            import keyring
-
-            backend = keyring.get_keyring()
+            backend = _system_keyring()
+            if backend is None:
+                raise RuntimeError("no system credential store on this machine")
             # A keyring that fails on use is worse than a file, so it is tried once here.
-            keyring.get_password(KEYRING_SERVICE, KEYRING_USERNAME)
+            backend.get_password(KEYRING_SERVICE, KEYRING_USERNAME)
             logger.debug("Using the system credential store (%s)", type(backend).__name__)
-            return KeyringCredentialStore(keyring)
+            return KeyringCredentialStore(backend)
         except Exception as e:  # noqa: BLE001 - any failure falls back to the file store
             logger.debug("No usable system credential store (%s); using a file", e)
     return FileCredentialStore(data_dir)
