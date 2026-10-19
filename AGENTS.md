@@ -52,7 +52,8 @@ tests/         core/, api/, cli/, fixtures/headers/
 group, so the whole tree is readable in one place and a test can compare it with an expected
 list. Command functions in `cli/commands/` are plain and undecorated — importable and testable
 without Typer — and their name and help text are given at registration, not taken from the
-function. `cli/factory.py` owns the shared settings and adds `--debug` at every level through
+function. `cli/factory.py` owns the shared settings and adds `--debug` and `--data-dir` (which sets
+`HANAKURA_DATA_DIR` for the command and the processes it starts; `webui` keeps its own) at every level through
 custom command and group classes; it is the only module that may import the private
 `typer._click`; Typer upgrades must remain compatible with this integration. `main()` does
 its own error handling so exit codes and messages are uniform. Heavy imports (FastAPI, uvicorn,

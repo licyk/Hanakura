@@ -88,7 +88,7 @@ hanakura
     └── delete <paths...>      --permanent --yes
 ```
 
-所有列表类命令都接受 `--json`，输出与 API 返回相同的记录。`--debug` 在每一级命令上都可用。
+所有列表类命令都接受 `--json`，输出与 API 返回相同的记录。`--debug` 和 `--data-dir DIR`（代替 `HANAKURA_DATA_DIR` 或默认位置的数据目录）在每一级命令上都可用。
 出错时按错误类型返回退出码：2 未找到，3 冲突，4 路径或输入无效，5 需要令牌，6 上游失败。
 
 示例：

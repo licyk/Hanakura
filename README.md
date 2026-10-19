@@ -92,7 +92,8 @@ hanakura
 ```
 
 Every listing command accepts `--json`, which prints the same records the API returns.
-`--debug` works at every level. Errors exit with a code per kind: 2 not found, 3 conflict,
+`--debug` and `--data-dir DIR` (a data directory other than `HANAKURA_DATA_DIR` or the default) work at every
+level. Errors exit with a code per kind: 2 not found, 3 conflict,
 4 invalid path or input, 5 needs a token, 6 upstream failure.
 
 Examples:

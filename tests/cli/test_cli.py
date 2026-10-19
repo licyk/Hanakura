@@ -144,3 +144,15 @@ def test_logging_setup_does_not_duplicate_handlers(monkeypatch):
     assert len(logger.handlers) == 1
     assert logger.handlers[0].name == LOGGER_NAME
     assert logger.level == logging.DEBUG
+
+
+def test_data_dir_option_before_or_after_the_command(runner, tmp_path):
+    """``--data-dir`` at any level points the command at another data directory, as the environment variable does."""
+    app = get_app()
+    for args, folder in ((["--data-dir", str(tmp_path / "a"), "config", "path"], "a"), (["config", "path", "--data-dir", str(tmp_path / "b")], "b")):
+        r = runner.invoke(app, args)
+        assert r.exit_code == 0, r.output
+        assert r.output.strip().endswith(str(tmp_path / folder / "settings.toml")), r.output
+    r = runner.invoke(app, ["library", "root", "list", "--data-dir", str(tmp_path / "c")])
+    assert r.exit_code == 0, r.output
+    assert (tmp_path / "c" / "hanakura.db").is_file() and not (tmp_path / "data" / "hanakura.db").exists()
