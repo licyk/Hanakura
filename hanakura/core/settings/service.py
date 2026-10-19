@@ -95,8 +95,9 @@ class SettingsService:
         They sit above the file and the environment, are never written back, and cannot be
         changed through the API, so a host can pin a value for the life of the process.
         """
-        self.data_dir = (data_dir or default_data_dir()).resolve()
-        self.path = settings_path or self.data_dir / SETTINGS_FILE_NAME
+        self.data_dir = (data_dir or default_data_dir()).expanduser().resolve()
+        # Absolute once, here: a relative settings file would follow the working directory of every later read and write.
+        self.path = Path(settings_path).expanduser().resolve() if settings_path else self.data_dir / SETTINGS_FILE_NAME
         self._environ = environ if environ is not None else os.environ
         self._overrides = copy.deepcopy(overrides or {})
         self._lock = threading.RLock()

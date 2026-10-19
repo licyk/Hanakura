@@ -14,9 +14,9 @@ def default_data_dir() -> Path:
     if env:
         return Path(env).expanduser().resolve()
     if sys.platform == "win32":
-        base = Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming")
+        base = Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming").expanduser()
     elif sys.platform == "darwin":
         base = Path.home() / "Library" / "Application Support"
     else:
-        base = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share")
+        base = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share").expanduser()
     return (base / "hanakura").resolve()

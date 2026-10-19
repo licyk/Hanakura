@@ -234,7 +234,7 @@ class DownloadManager:
         if file_name and not req.overwrite and (dest / file_name).exists():
             raise ConflictError(f"Target exists: {file_name}", {"target": str(dest / file_name)})
 
-        existing = self._find_resumable(req, dest)
+        existing = self._find_resumable(req, root_id, rel_dir, dest)
         if existing is not None:
             return self.resume(existing.id)
 
@@ -263,12 +263,14 @@ class DownloadManager:
         self.events.publish(DownloadQueuedEvent(job=job.model_copy()))
         return job
 
-    def _find_resumable(self, req: DownloadCreate, dest: Path) -> DownloadJob | None:
-        """A paused or failed HTTP job for the same file and folder is resumed instead of duplicated."""
+    def _find_resumable(self, req: DownloadCreate, root_id: str | None, rel_dir: str, dest: Path) -> DownloadJob | None:
+        """A paused or failed HTTP job for the same file and folder is resumed instead of duplicated. A folder in a root
+        is compared by root and relative folder, so a job made before its root moved is still found."""
         if req.hub:
             return None
         for job in self.list_jobs():
-            if job.state not in ("paused", "failed") or job.runner != "http" or job.dest_dir != str(dest):
+            same_folder = (job.root_id, job.rel_dir) == (root_id, rel_dir) if job.root_id else job.dest_dir == str(dest)
+            if job.state not in ("paused", "failed") or job.runner != "http" or not same_folder:
                 continue
             if req.url and job.url == req.url:
                 return job
@@ -385,8 +387,22 @@ class DownloadManager:
             self.events.publish(DownloadRemovedEvent(job_ids=ids))
         return ids
 
+    def _dest(self, job: DownloadJob) -> Path:
+        """Where a job writes: its folder in its root when it has one, wherever that root is now (the root may have been
+        moved and re-pointed since the job was made), else the absolute folder it was given. A root whose folder is gone
+        is an error: creating it again would download into the old place."""
+        if not job.root_id:
+            return Path(job.dest_dir)
+        root_path = self.library.root_path(job.root_id)
+        if not root_path.is_dir():
+            raise NotFoundError(f"The model folder of this download is missing: {root_path}", {"root_id": job.root_id})
+        return resolve_in_root(root_path, job.rel_dir, follow_symlinks=self.library.follow_symlinks) if job.rel_dir else root_path
+
     def _discard_partial(self, job: DownloadJob) -> None:
-        dest = Path(job.dest_dir)
+        try:
+            dest = self._dest(job)
+        except HanakuraError:
+            return  # its root is gone, and its partial files with it
         if job.runner == "http":
             if job.file_name:
                 (dest / f"{job.file_name}.part").unlink(missing_ok=True)
@@ -462,6 +478,11 @@ class DownloadManager:
 
     def _run(self, job: DownloadJob, control: JobControl) -> None:
         try:
+            dest = str(self._dest(job))
+            if dest != job.dest_dir:
+                logger.info("Job %s: its folder is %s now (it was %s)", job.id, dest, job.dest_dir)
+                job.dest_dir = dest
+                self._save(job)
             if job.runner == "http":
                 self._run_http(job, control)
             else:

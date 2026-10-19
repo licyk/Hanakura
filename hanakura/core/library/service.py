@@ -127,11 +127,25 @@ class LibraryService:
         raise NotFoundError(f"No model root with id {root_id!r}")
 
     def root_path(self, root_id: str) -> Path:
-        return Path(self._root(root_id).path).expanduser().resolve()
+        return self._path(self._root(root_id))
 
-    @staticmethod
-    def _info(root: ModelRoot) -> RootInfo:
-        return RootInfo(id=root.id, name=root.name, path=root.path, layout=root.layout, exists=Path(root.path).expanduser().is_dir(), kind=root.kind)
+    def _path(self, root: ModelRoot, resolve: bool = True) -> Path:
+        """A root's folder. The settings keep a root inside the data folder relative to it (``_stored``), so it moves
+        with the data folder; any other root is absolute."""
+        path = self.settings.data_dir / Path(root.path).expanduser()
+        return path.resolve() if resolve else path
+
+    def _stored(self, path: Path) -> str:
+        """A root's folder as the settings keep it: relative to the data folder inside it, else absolute."""
+        try:
+            rel = path.relative_to(self.settings.data_dir)
+        except ValueError:
+            return str(path)
+        return rel.as_posix() if rel.parts else str(path)
+
+    def _info(self, root: ModelRoot) -> RootInfo:
+        path = self._path(root, resolve=False)
+        return RootInfo(id=root.id, name=root.name, path=str(path), layout=root.layout, exists=path.is_dir(), kind=root.kind)
 
     def list_roots(self) -> list[RootInfo]:
         return [self._info(r) for r in self._roots()]
@@ -156,9 +170,9 @@ class LibraryService:
         for existing in self._roots():
             if root_id is not None and existing.id == root_id:
                 raise ConflictError(f"Already a root with id {root_id!r}")
-            if Path(existing.path).expanduser().resolve() == path:
+            if self._path(existing) == path:
                 raise ConflictError(f"Already a root: {path}", {"root_id": existing.id})
-        root = ModelRoot(id=root_id or uuid.uuid4().hex[:8], name=req.name or path.name or str(path), path=str(path), layout=req.layout, kind=req.kind)
+        root = ModelRoot(id=root_id or uuid.uuid4().hex[:8], name=req.name or path.name or str(path), path=self._stored(path), layout=req.layout, kind=req.kind)
 
         def add(data: dict[str, Any]) -> None:
             data["paths"]["model_roots"].append(root.model_dump())
@@ -176,7 +190,7 @@ class LibraryService:
             path = Path(changes["path"]).expanduser()
             if not path.is_absolute() or not path.is_dir():
                 raise InvalidPathError(f"Not an absolute directory: {path}")
-            changes["path"] = str(path.resolve())
+            changes["path"] = self._stored(path.resolve())
 
         def update(data: dict[str, Any]) -> None:
             for r in data["paths"]["model_roots"]:
@@ -207,14 +221,13 @@ class LibraryService:
         for target in candidates:
             best: tuple[str, Path] | None = None
             for root in self._roots():
-                root_path = Path(root.path).expanduser()
-                root_path = root_path if target is given else root_path.resolve()
+                root_path = self._path(root, resolve=target is not given)
                 if (target == root_path or root_path in target.parents) and (best is None or len(str(root_path)) > len(str(best[1]))):
                     best = (root.id, root_path)
             if best is not None:
                 return best[0], to_rel(best[1], target)
         for root in self._roots():
-            root_path = Path(root.path).expanduser()
+            root_path = self._path(root, resolve=False)
             if root_path in given.parents:
                 raise InvalidPathError(f"{given} is reached through a symbolic link that leaves its root. Turn on library.follow_symlinks to open it.")
         raise NotFoundError(f"{given} is not inside any model root")
@@ -377,7 +390,7 @@ class LibraryService:
         present: list[tuple[ModelRoot, Path]] = []
         missing: list[str] = []
         for r in ordered:
-            path = Path(r.path).expanduser().resolve()
+            path = self._path(r)
             if path.is_dir():
                 present.append((r, path))
             else:

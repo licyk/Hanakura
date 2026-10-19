@@ -238,4 +238,6 @@ class DetectionService:
     def forget(self, path: Path) -> None:
         """Drop index rows for a path and anything below it."""
         p = str(path)
-        self.db.execute("DELETE FROM file_index WHERE path = ? OR path LIKE ?", (p, p.rstrip(os.sep) + os.sep + "%"))
+        # Escaped: a "_" or "%" in the path would otherwise match other files' rows.
+        prefix = (p.rstrip(os.sep) + os.sep).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        self.db.execute("DELETE FROM file_index WHERE path = ? OR path LIKE ? ESCAPE '\\'", (p, prefix + "%"))

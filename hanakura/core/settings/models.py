@@ -26,6 +26,7 @@ class ModelRoot(Record):
     id: str
     name: str
     path: str
+    """Absolute, or relative to the data folder for a root inside it (it then moves with the data folder)."""
     layout: LayoutName = "custom"
     kind: str | None = None
     """Fallback folder hint for a root dedicated to one model kind; never overrides detection."""

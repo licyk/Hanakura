@@ -197,7 +197,9 @@ reimplemented; never copy code from it.
 
 ## 7. The library
 
-A **root** is a folder plus a layout preset. Layout maps folder names to kinds and is a hint and a
+A **root** is a folder plus a layout preset. `settings.toml` keeps a root inside the data directory relative to it
+(`LibraryService._stored` / `_path`), so it moves with the data directory; any other root is absolute. Nothing else
+in the data directory records a path inside it, so the data directory can be moved or copied as it is. Layout maps folder names to kinds and is a hint and a
 default download destination, never an override of detection. The three presets are tables in
 `library/layouts.py`, which is where the full lists live; what matters here is how they behave:
 
@@ -313,6 +315,11 @@ Keep both parameter paths covered when changing proxy setup.
 Creating a download that matches a paused or failed HTTP job — same source file or URL, same
 folder — resumes that job instead of making a second one, so re-running a command after Ctrl+C
 continues from the `.part` file.
+
+A job in a root writes to `root_id` + `rel_dir`, resolved when it runs (`DownloadManager._dest`), never to the
+absolute `dest_dir` it was created with: a root moved and re-pointed meanwhile takes the job (and its `.part`) along,
+and "same folder" compares root and relative folder. A root whose folder is gone fails the job; creating the old
+folder again would download into a place nobody looks. `dest_dir` is rewritten to where the job ran, for display.
 
 **Hub downloads** run in a **child process** (`core/hubs/worker.py`) because raising from either
 library's progress hook does not stop the transfer: Hugging Face's default path ran to completion,
@@ -715,6 +722,11 @@ One line each; the section in brackets explains why.
   megabytes); a mock test covers the flow, including the token being dropped on the redirect to
   storage.
 - ControlNet, embedding and upscaler detection rules have only synthetic fixtures.
+- **Run as root on Linux, opening the credential store deletes `/dev/null`.** `keyring` imports every backend to
+  choose one; its macOS backend calls `ctypes.util.find_library('Security')`, which runs `ld -t -o /dev/null
+  -lSecurity`, and GNU `ld` removes its output file when the link fails. Every `build_services()` (so every test
+  that builds services) does it; the next shell's `2>/dev/null` then leaves a regular file there. Restore it with
+  `rm /dev/null && mknod -m 666 /dev/null c 1 3`. Not yet worked around in the code.
 - hf-mirror and Gitee AI endpoints were never tested from a network that needs them.
 - Uploads — dropped files and the file picker — are covered at the API level and in unit tests,
   not by dropping or choosing a file in a real browser. Saving a library file through the
