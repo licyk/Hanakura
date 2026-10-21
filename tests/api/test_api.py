@@ -229,6 +229,7 @@ def test_download_response_computed_field(client, services, monkeypatch, runner,
 
 
 CIVITAI_AUTH = "/api/v1/auth/civitai"
+COMFY_NODES = "2d61872c-9aa9-4dbc-93c3-899c222842c1"
 
 
 @pytest.fixture
@@ -333,7 +334,8 @@ def test_manual_token_and_oauth_are_separate_over_the_api(oauth_client):
     assert chosen["method"] == "manual" and chosen["effective_method"] == "manual"
 
 
-def test_unconfigured_oauth_explains_itself(client):
+def test_unconfigured_oauth_explains_itself(client, services):
+    services.auth.profiles = ()
     r = client.post(f"{CIVITAI_AUTH}/start", headers={"origin": "http://localhost"})
     assert r.status_code == 400 and "oauth_client_id" in r.json()["message"]
     assert client.get(f"{CIVITAI_AUTH}/status").json()["oauth_configured"] is False
@@ -393,13 +395,13 @@ def test_a_remote_browser_gets_a_device_sign_in(tmp_path):
 
 @pytest.fixture
 def bundled_client(tmp_path):
-    """A server whose only client is a verified bundled one with a fixed root callback."""
-    from tests.core.test_auth import VERIFIED, Provider
+    """A fresh server with the bundled client it ships with, and a provider granting only UserRead."""
+    from tests.core.test_auth import Provider
 
     provider = Provider()
+    provider.scope = 1
     services = build_services(data_dir=tmp_path / "data", environ={}, transport=httpx.MockTransport(provider))
     services.settings.update({"auth": {"civitai": {"use_keyring": False}}})
-    services.auth.profiles = (VERIFIED,)
     yield services, provider
     services.close()
 
@@ -409,11 +411,12 @@ def test_a_bundled_client_returns_to_its_root_callback(bundled_client):
     app = create_app(services, bound_host="127.0.0.1", bound_port=7999, start_downloads=False, serve_ui=False)
     with TestClient(app, base_url="http://localhost:7999") as client:
         status = client.get(f"{CIVITAI_AUTH}/status").json()
-        assert (status["client_source"], status["client_name"], status["flows"]) == ("bundled", "Bundled Test App", ["browser"])
+        assert (status["client_source"], status["client_name"], status["flows"]) == ("bundled", "Civitai ComfyNodes", ["browser"])
         start = client.post(f"{CIVITAI_AUTH}/start", headers={"origin": "http://localhost:7999"})
         assert start.status_code == 200, start.text
+        assert start.json()["flow"] == "browser"
         params = parse_qs(urlsplit(start.json()["authorization_url"]).query)
-        assert params["client_id"] == ["bundled-id"]
+        assert params["client_id"] == [COMFY_NODES] and params["scope"] == ["1"] and params["code_challenge_method"] == ["S256"]
         assert params["redirect_uri"] == ["http://localhost:7999/civitai/callback"]
         cookies = start.headers.get_list("set-cookie")
         assert any(c.startswith("hanakura_oauth_cb=") and "Path=/civitai/callback" in c and "HttpOnly" in c for c in cookies)
@@ -425,7 +428,10 @@ def test_a_bundled_client_returns_to_its_root_callback(bundled_client):
         callback = client.get("/civitai/callback", params={"code": "c", "state": state}, follow_redirects=False)
         assert callback.status_code == 303 and callback.headers["location"] == "/#/settings?civitai=connected"
         assert any(c.startswith("hanakura_oauth_cb=") and "Path=/civitai/callback" in c for c in callback.headers.get_list("set-cookie"))
-        assert services.auth.store.load().client_id == "bundled-id"
+        stored = services.auth.store.load()
+        assert (stored.client_id, stored.issuer, stored.scope) == (COMFY_NODES, "https://auth.civitai.com", 1)
+        status = client.get(f"{CIVITAI_AUTH}/status").json()
+        assert (status["oauth_state"], status["effective_method"], status["scope"]) == ("connected", "oauth", 1)
 
 
 def test_root_callbacks_keep_the_binding_for_other_pending_sign_ins(bundled_client):
@@ -451,6 +457,20 @@ def test_a_prefixed_server_offers_no_root_callback(bundled_client):
         refused = client.post(f"/hub{CIVITAI_AUTH}/start", headers={"origin": "http://localhost:7999"})
         assert refused.status_code == 400 and refused.json()["detail"]["reason"] == "callback_unsupported"
         assert client.get("/civitai/callback", params={"code": "c", "state": "s"}).status_code == 404
+
+
+def test_a_remote_browser_is_not_sent_to_its_own_localhost(bundled_client):
+    services, _provider = bundled_client
+    services.settings.update({"server": {"access_token": "tok"}})
+    app = create_app(services, bound_host="0.0.0.0", bound_port=7865, start_downloads=False, serve_ui=False)
+    h = {"authorization": "Bearer tok", "origin": "http://192.168.1.5:7865"}
+    with TestClient(app, base_url="http://192.168.1.5:7865") as client:
+        status = client.get(f"{CIVITAI_AUTH}/status", headers=h).json()
+        assert (status["client_source"], status["flows"], status["unavailable_reason"]) == ("bundled", [], "callback_unsupported")
+        refused = client.post(f"{CIVITAI_AUTH}/start", headers=h)
+        assert refused.status_code == 400 and refused.json()["detail"]["reason"] == "callback_unsupported"
+        # The bundled client has no device grant, so a device code is not offered as the way out.
+        assert "device code" not in refused.json()["message"] and "API token" in refused.json()["message"]
 
 
 def test_the_root_callback_is_closed_to_other_clients(oauth_client):

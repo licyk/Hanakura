@@ -266,12 +266,13 @@ export default {
     connected: 'Civitai account connected',
     unavailable: {
       disabled: 'Signing in with Civitai is turned off.',
-      no_client: 'Signing in needs an OAuth application. No built-in one is available yet: add your own below, or use an API token.',
+      no_client: 'Signing in needs an OAuth application, and no built-in one is available: add your own below, or use an API token.',
       issuer_mismatch: 'The built-in sign-in only works with Civitai’s own sign-in service.',
-      callback_unsupported: 'Civitai cannot return to this address, and the application does not allow signing in with a code. Use an API token.',
+      callback_unsupported:
+        'Civitai cannot return to this address. The built-in sign-in only works on the computer running Hanakura, opened at its local address with no path prefix. Open it there, add your own OAuth application below, or use an API token.',
     },
     reasons: {
-      insufficient_scope: 'Civitai did not grant permission to read models and your account. Nothing was changed.',
+      insufficient_scope: 'Civitai did not grant the permissions asked for (auth.civitai.oauth_scope). Nothing was changed.',
       redirect_mismatch: 'Civitai does not accept this address as the application’s return address.',
       client_unavailable: 'Civitai does not know this OAuth application, or it does not allow this way of signing in.',
       callback_unsupported: 'Civitai cannot return to this address. Sign in with a code instead.',

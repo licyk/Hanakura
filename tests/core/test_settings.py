@@ -13,6 +13,18 @@ def test_defaults_and_save(tmp_path):
     assert again.settings.sources["civitai"].token == "secret"
 
 
+def test_the_oauth_scope_defaults_to_user_read_and_a_saved_one_is_kept(tmp_path):
+    assert SettingsService(data_dir=tmp_path / "fresh", environ={}).settings.auth.civitai.oauth_scope == 1
+    (tmp_path / "old").mkdir()
+    (tmp_path / "old" / "settings.toml").write_text("[auth.civitai]\noauth_scope = 5\n")
+    old = SettingsService(data_dir=tmp_path / "old", environ={})
+    assert old.settings.auth.civitai.oauth_scope == 5
+    old.update({"network": {"timeout": 5}})
+    assert SettingsService(data_dir=tmp_path / "old", environ={}).settings.auth.civitai.oauth_scope == 5
+    assert SettingsService(data_dir=tmp_path / "old", environ={"HANAKURA_AUTH__CIVITAI__OAUTH_SCOPE": "1"}).settings.auth.civitai.oauth_scope == 1
+    assert SettingsService(data_dir=tmp_path / "fresh", environ={}, overrides={"auth": {"civitai": {"oauth_scope": 5}}}).settings.auth.civitai.oauth_scope == 5
+
+
 def test_view_hides_tokens(tmp_path):
     s = SettingsService(data_dir=tmp_path, environ={})
     s.update({"sources": {"civitai": {"token": "secret"}}, "server": {"access_token": "t"}})

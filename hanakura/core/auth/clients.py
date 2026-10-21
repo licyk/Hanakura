@@ -1,10 +1,11 @@
 """Which OAuth client an authorization runs as: one the user or host registered, or a bundled one.
 
 An explicit ``auth.civitai.oauth_client_id`` always wins and is never replaced by a bundled client.
-Without one, the first bundled profile marked ``verified`` is used. A profile is only marked
-verified once a real sign-in has shown that it grants ``UserRead | ModelsRead`` (5), accepts the
-redirect Hanakura sends, and can download a file that needs an account; ``plan.md`` keeps the
-evidence. Until then no bundled client is offered, and the interface asks for a client id.
+Without one, the first bundled profile marked ``verified`` is used. ``verified`` means a real
+sign-in with the configuration Hanakura sends — this client, its callback, the default scope —
+was seen to succeed; it promises no particular permission, grant or token lifecycle, and the
+evidence and its limits are in ``plan1.md``. With no verified profile, the interface asks for a
+client id.
 """
 
 from dataclasses import dataclass
@@ -39,16 +40,16 @@ class ClientProfile:
 BUNDLED_PROFILES: tuple[ClientProfile, ...] = (
     # Civitai's own ComfyUI nodes. Its source (civitai-comfy-nodes@1bcb195) registers loopback
     # callbacks at /civitai/callback, and the authorization service matches a loopback redirect on
-    # any port. Its device grant is refused (checked 2026-10-21), and whether its permission ceiling
-    # includes ModelsRead needs a signed-in account to find out, so it stays unverified.
+    # any port. Its device grant is refused, and so is scope 5 (both checked 2026-10-21); a browser
+    # sign-in with scope 1 succeeded and a download worked afterwards, as reported by the user.
     ClientProfile(
         key="civitai-comfy-nodes",
         client_id="2d61872c-9aa9-4dbc-93c3-899c222842c1",
         name="Civitai ComfyNodes",
         flows=frozenset({"browser"}),
         callback_path="/civitai/callback",
-        verified=False,
-        evidence="plan.md section 12",
+        verified=True,
+        evidence="plan1.md section 2 (user-reported: a scope 1 sign-in and a download succeeded)",
     ),
 )
 

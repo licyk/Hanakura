@@ -39,7 +39,7 @@ DEFAULT_RETURN_TO = "/#/settings"
 
 UNAVAILABLE_MESSAGES: dict[str, str] = {
     "disabled": "Civitai sign-in is turned off (auth.civitai.oauth_enabled).",
-    "no_client": "Civitai sign-in needs an OAuth application: no bundled one has been verified yet, so set auth.civitai.oauth_client_id to the id of one registered with Civitai, or use an API token.",
+    "no_client": "Civitai sign-in needs an OAuth application and no bundled one is enabled: set auth.civitai.oauth_client_id to the id of one registered with Civitai, or use an API token.",
     "issuer_mismatch": "The bundled sign-in only works with Civitai's own authorization service; set auth.civitai.oauth_client_id for another one.",
     "callback_unsupported": "Civitai cannot send the browser back to this address.",
 }
@@ -224,14 +224,22 @@ class CivitaiAuthService:
         usable = self._usable_flows(client, browser_available)
         if requested != "auto":
             if requested == "browser" and not browser_available and "browser" in client.flows:
-                raise ValidationError(browser_reason or UNAVAILABLE_MESSAGES["callback_unsupported"], {"reason": "callback_unsupported"})
+                raise self._no_callback(client, browser_reason)
             if requested not in client.flows:
                 raise ValidationError(f"The {client.name or 'configured'} OAuth application does not support {requested} sign-in.", {"reason": "client_unavailable"})
             return requested
         if not usable:
-            message = browser_reason or UNAVAILABLE_MESSAGES["callback_unsupported"]
-            raise ValidationError(f"{message} Use an API token or an OAuth application of your own that allows device sign-in.", {"reason": "callback_unsupported"})
+            raise self._no_callback(client, browser_reason)
         return usable[0]
+
+    @staticmethod
+    def _no_callback(client: ResolvedClient, reason: str | None) -> ValidationError:
+        message = reason or UNAVAILABLE_MESSAGES["callback_unsupported"]
+        if "device" in client.flows:
+            message += " Sign in with a device code instead, or use an API token."
+        else:
+            message += f" The {client.name or 'configured'} OAuth application only signs in through a browser: use an API token, or an OAuth application of your own that allows device sign-in."
+        return ValidationError(message, {"reason": "callback_unsupported"})
 
     @staticmethod
     def _usable_flows(client: ResolvedClient, browser_available: bool) -> list[Flow]:
@@ -310,9 +318,7 @@ class CivitaiAuthService:
         if not scope_granted(credentials.scope, transaction.scope):
             self._discard(transaction.client, credentials)
             granted = "nothing it reported" if credentials.scope is None else str(credentials.scope)
-            raise AuthRequiredError(
-                f"Civitai granted {granted} instead of the permissions asked for ({transaction.scope}): reading models and the account.", {"reason": "insufficient_scope"}
-            )
+            raise AuthRequiredError(f"Civitai granted {granted} instead of the permissions asked for (scope {transaction.scope}).", {"reason": "insufficient_scope"})
         client = self._oauth_client_for(transaction.client)
         try:
             account = client.userinfo(credentials.access_token)

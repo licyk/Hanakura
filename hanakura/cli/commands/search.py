@@ -69,7 +69,8 @@ def auth_disconnect() -> None:
 
 FLOWS = ("auto", "browser", "device")
 # The command line has no address Civitai could send a browser back to.
-NO_CALLBACK = "The command line cannot receive Civitai's callback: sign in from Settings in the web UI (hanakura webui), or use --flow device."
+NO_CALLBACK = "The command line cannot receive Civitai's callback: sign in from Settings in the web UI (hanakura webui) on this computer."
+NO_BROWSER_FLOW = f"{NO_CALLBACK} Without --flow, the command line signs in with a device code when the OAuth application allows one."
 
 
 def auth_connect(
@@ -85,7 +86,7 @@ def auth_connect(
     if flow not in FLOWS:
         raise typer.BadParameter("flow must be auto, browser or device")
     if flow == "browser":
-        raise ValidationError(NO_CALLBACK, {"reason": "callback_unsupported"})
+        raise ValidationError(NO_BROWSER_FLOW, {"reason": "callback_unsupported"})
     # Prompts go to stderr with --json, so stdout carries only the result.
     out = err_console if json_output else console
     with open_services() as s:

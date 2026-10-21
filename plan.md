@@ -2,7 +2,7 @@
 
 Prepared: 2026-10-21.
 
-Status: M1–M3 implemented and covered offline; M0 ended as **no candidate verified**, so no bundled client is enabled and the configuration-free flow is not finished. Section 12 records the evidence and what remains. Nothing here claims that client reuse, real account authorization, or authenticated model downloads have been verified.
+Status: M1–M3 implemented and covered offline. M0 ended here as **no candidate verified**; that outcome and the scope-5 gate are **superseded by `plan1.md`**: the user's live run showed ComfyNodes refusing `scope=5` and signing in with `scope=1`, after which a download worked, so the ComfyNodes profile is now enabled with a default scope of 1. Sections 4, 6 and 12 below keep the original requirement, the investigation and the failed probes as they were; read `plan1.md` for the current decisions and the live checks still pending.
 
 ## 1. Goals and scope
 
@@ -318,6 +318,8 @@ The authorization endpoint redirects an anonymous browser to `/login` before val
 Also established from source: the download route (`/api/download/models/[id]`) and the public v1 REST routes accept an OAuth bearer as the user's session without checking its scope bits, while tRPC procedures require theirs. A `UserRead`-only token might therefore download today, but Hanakura keeps requiring ModelsRead: relying on an unenforced scope is not a supported integration, and it can change without notice.
 
 ### 12.2 To finish M0 and M2
+
+Superseded: step 1 was run by the user with the outcome `plan1.md` §2 records (`scope=5` refused with `invalid_scope`, `scope=1` signed in, a download succeeded), and `plan1.md` replaced step 2's scope-5 condition. The steps are kept as written.
 
 1. With a Civitai account, open an authorization for the ComfyNodes client with `scope=5`, `redirect_uri=http://127.0.0.1:<any port>/civitai/callback`, PKCE S256, and note: the consent screen's application name and listed permissions, whether `invalid_scope` or `access_denied` (access mode) comes back, and the token response's `scope`. Then download one file that needs an account and verify its SHA256.
 2. If everything passes, set `verified=True` on that profile in `hanakura/core/auth/clients.py`, record the evidence here, and update AGENTS.md §15. Nothing else needs to change: the root callback, its cookie, the deployment checks and the interface already follow the profile.

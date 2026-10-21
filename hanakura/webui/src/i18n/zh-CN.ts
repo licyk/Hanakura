@@ -267,12 +267,12 @@ const zhCN: typeof en = {
     connected: '已连接 Civitai 账号',
     unavailable: {
       disabled: 'Civitai 登录已关闭。',
-      no_client: '登录需要 OAuth 应用。目前还没有可用的内置应用：请在下方填写自己的应用，或使用 API 令牌。',
+      no_client: '登录需要 OAuth 应用，但没有可用的内置应用：请在下方填写自己的应用，或使用 API 令牌。',
       issuer_mismatch: '内置登录只适用于 Civitai 自己的登录服务。',
-      callback_unsupported: 'Civitai 无法返回此地址，且该应用不支持验证码登录。请使用 API 令牌。',
+      callback_unsupported: 'Civitai 无法返回此地址。内置登录只能在运行 Hanakura 的电脑上、通过不带路径前缀的本地地址打开时使用。请在那里打开，或在下方填写自己的 OAuth 应用，或使用 API 令牌。',
     },
     reasons: {
-      insufficient_scope: 'Civitai 未授予读取模型和账号的权限，未做任何更改。',
+      insufficient_scope: 'Civitai 未授予所请求的权限（auth.civitai.oauth_scope），未做任何更改。',
       redirect_mismatch: 'Civitai 不接受此地址作为该应用的返回地址。',
       client_unavailable: 'Civitai 不认识这个 OAuth 应用，或该应用不允许这种登录方式。',
       callback_unsupported: 'Civitai 无法返回此地址，请改用验证码登录。',

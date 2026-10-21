@@ -218,11 +218,20 @@ def test_auth_connect_reports_a_refusal(runner, device_services):
     assert isinstance(result.exception, AuthRequiredError) and result.exception.exit_code == 5
 
 
-def test_auth_connect_refuses_what_it_cannot_do(runner):
+def test_auth_connect_refuses_what_it_cannot_do(runner, monkeypatch):
+    from hanakura.core.auth import service
     from hanakura.core.errors import ValidationError
 
     browser = runner.invoke(get_app(), ["auth", "connect", "--flow", "browser"])
     assert isinstance(browser.exception, ValidationError) and "web UI" in browser.exception.message
-    # No client id, and no verified bundled client: the command says how to get one.
+    # The bundled client signs in only through a browser: the command points to the web UI.
+    bundled = runner.invoke(get_app(), ["auth", "connect"])
+    assert isinstance(bundled.exception, ValidationError) and bundled.exception.detail["reason"] == "callback_unsupported"
+    assert "web UI" in bundled.exception.message and "only signs in through a browser" in bundled.exception.message
+    device = runner.invoke(get_app(), ["auth", "connect", "--flow", "device"])
+    assert isinstance(device.exception, ValidationError) and device.exception.detail["reason"] == "client_unavailable"
+    # No client id, and no bundled client: the command says how to get one.
+    real = service.resolve_client
+    monkeypatch.setattr(service, "resolve_client", lambda config, _profiles=(): real(config, ()))
     unconfigured = runner.invoke(get_app(), ["auth", "connect"])
     assert isinstance(unconfigured.exception, ValidationError) and "oauth_client_id" in unconfigured.exception.message

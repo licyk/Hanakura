@@ -122,8 +122,20 @@ def test_authorization_url_carries_pkce_and_scope(services):
     assert urlsplit(start.authorization_url).netloc == "auth.civitai.com"
     assert query["client_id"] == [CLIENT_ID]
     assert query["response_type"] == ["code"] and query["code_challenge_method"] == ["S256"]
-    assert query["redirect_uri"] == [REDIRECT] and query["scope"] == ["5"]
+    assert query["redirect_uri"] == [REDIRECT] and query["scope"] == ["1"]
     assert "client_secret" not in query
+
+
+def test_a_fresh_installation_signs_in_as_the_bundled_client(tmp_path, provider):
+    s = build_services(data_dir=tmp_path / "d", environ={}, transport=httpx.MockTransport(provider))
+    try:
+        callback = "http://127.0.0.1:7865/civitai/callback"
+        start, _secret = s.auth.start(callback)
+        query = parse_qs(urlsplit(start.authorization_url).query)
+        assert query["client_id"] == ["2d61872c-9aa9-4dbc-93c3-899c222842c1"] and query["scope"] == ["1"]
+        assert query["redirect_uri"] == [callback] and query["code_challenge_method"] == ["S256"] and query["state"][0]
+    finally:
+        s.close()
 
 
 # -- the flow -----------------------------------------------------------------
@@ -181,6 +193,7 @@ def test_transactions_expire():
 
 def test_oauth_without_a_client_id_is_a_clear_error(tmp_path, provider):
     s = build_services(data_dir=tmp_path / "d", environ={}, transport=httpx.MockTransport(provider))
+    s.auth.profiles = ()
     try:
         with pytest.raises(ValidationError, match="oauth_client_id"):
             s.auth.start(REDIRECT)
@@ -300,6 +313,10 @@ def test_manual_token_works_without_any_oauth(tmp_path, provider):
     s = build_services(data_dir=tmp_path / "d", environ={}, transport=httpx.MockTransport(provider))
     try:
         s.settings.update({"sources": {"civitai": {"token": "manual-token"}}})
+        # A bundled client being available changes nothing until the user signs in.
+        assert s.auth.status().oauth_configured is True
+        assert s.auth.headers() == {"Authorization": "Bearer manual-token"}
+        s.auth.profiles = ()
         assert s.auth.headers() == {"Authorization": "Bearer manual-token"}
         status = s.auth.status()
         assert (status.method, status.effective_method, status.credential_source) == ("manual", "manual", "settings")
@@ -471,10 +488,17 @@ VERIFIED = ClientProfile("test-bundled", "bundled-id", "Bundled Test App", froze
 UNVERIFIED = ClientProfile("candidate", "candidate-id", "Candidate", frozenset({"browser"}), "/civitai/callback", False, "test")
 
 
-def test_no_bundled_client_is_offered_until_one_is_verified():
-    assert default_profile() is None, "a bundled client may only be enabled once plan.md records its live verification"
-    client, reason = resolve_client(CivitaiAuthSettings(), (UNVERIFIED,))
-    assert client is None and reason == "no_client"
+def test_the_bundled_client_is_civitai_comfynodes_signing_in_through_a_browser():
+    profile = default_profile()
+    assert profile is not None and (profile.client_id, profile.name) == ("2d61872c-9aa9-4dbc-93c3-899c222842c1", "Civitai ComfyNodes")
+    client, reason = resolve_client(CivitaiAuthSettings())
+    assert reason is None and client is not None
+    assert (client.source, client.client_id, client.flows, client.callback_path, client.scope) == ("bundled", profile.client_id, frozenset({"browser"}), "/civitai/callback", 1)
+
+
+def test_no_bundled_client_is_offered_unless_one_is_verified():
+    assert resolve_client(CivitaiAuthSettings(), (UNVERIFIED,)) == (None, "no_client")
+    assert resolve_client(CivitaiAuthSettings(), ()) == (None, "no_client")
 
 
 def test_client_resolution_precedence():
@@ -485,12 +509,15 @@ def test_client_resolution_precedence():
     assert custom is not None and (custom.source, custom.client_id, custom.callback_path) == ("custom", "mine", None)
     assert resolve_client(CivitaiAuthSettings(oauth_enabled=False, oauth_client_id="mine"), (VERIFIED,)) == (None, "disabled")
     assert resolve_client(CivitaiAuthSettings(oauth_base_url="https://auth.example"), (VERIFIED,)) == (None, "issuer_mismatch")
-    # Defaults never widen what is asked for.
-    assert bundled.scope == 5
+    # Defaults never widen what is asked for, and an explicit scope is asked for as it is.
+    assert bundled.scope == 1
+    explicit, _ = resolve_client(CivitaiAuthSettings(oauth_client_id="mine", oauth_scope=5), (VERIFIED,))
+    assert explicit is not None and explicit.scope == 5
 
 
 def test_unconfigured_status_explains_why(tmp_path, provider):
     s = build_services(data_dir=tmp_path / "d", environ={}, transport=httpx.MockTransport(provider))
+    s.auth.profiles = ()
     try:
         status = s.auth.status()
         assert (status.oauth_configured, status.unavailable_reason, status.flows, status.client_source) == (False, "no_client", [], None)
@@ -518,8 +545,9 @@ def test_granted_scope_is_parsed_in_every_form_civitai_sends(value, expected):
 # -- what was granted -------------------------------------------------------------
 
 
-@pytest.mark.parametrize("granted", ["1", None])
+@pytest.mark.parametrize("granted", ["1", None, "five", [1, 4]])
 def test_a_connection_without_the_permissions_asked_for_is_refused(services, provider, granted):
+    services.settings.update({"auth": {"civitai": {"oauth_scope": 5}}})
     provider.scope = granted
     with pytest.raises(AuthRequiredError) as raised:
         connect(services, provider)
@@ -551,6 +579,20 @@ def test_refresh_and_revoke_use_the_client_that_issued_the_pair(services, provid
     services.auth.disconnect()
     revoke = [r for r in provider.requests if r.url.path.endswith("/revoke")][-1]
     assert parse_qs(revoke.content.decode())["client_id"] == [CLIENT_ID]
+
+
+def test_a_pair_from_before_the_bundled_client_keeps_its_grant_and_client(services, provider):
+    services.settings.update({"auth": {"civitai": {"oauth_scope": 5}}})
+    provider.expires_in = 10
+    connect(services, provider)
+    # Back to the defaults: the bundled client and UserRead.
+    services.settings.update({"auth": {"civitai": {"oauth_client_id": None, "oauth_scope": 1}}})
+    provider.scope = None
+    assert services.auth.headers() == {"Authorization": "Bearer access-2"}
+    stored = services.auth.store.load()
+    assert (stored.client_id, stored.scope) == (CLIENT_ID, 5)
+    refresh = [r for r in provider.requests if b"grant_type=refresh_token" in r.content][-1]
+    assert parse_qs(refresh.content.decode())["client_id"] == [CLIENT_ID]
 
 
 def test_an_old_record_without_an_issuer_still_refreshes(services, provider):
@@ -634,7 +676,16 @@ def test_a_disconnect_during_the_exchange_wins(services, provider, monkeypatch):
     assert "refresh-1" in provider.revoked
 
 
+@pytest.mark.parametrize(("granted", "stored"), [("1", 1), ("5", 5), ([5], 5)])
+def test_user_read_is_accepted_and_the_actual_grant_is_kept(services, provider, granted, stored):
+    provider.scope = granted
+    connect(services, provider)
+    assert services.auth.store.load().scope == stored
+    assert services.auth.status().scope == stored
+
+
 def test_a_failed_authorization_keeps_the_previous_account(services, provider):
+    services.settings.update({"auth": {"civitai": {"oauth_scope": 5}}})
     connect(services, provider)
     provider.scope = "1"
     with pytest.raises(AuthRequiredError):

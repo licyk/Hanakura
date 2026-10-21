@@ -74,11 +74,14 @@ describe('signing in with Civitai', () => {
   });
 
   it('sends the browser to Civitai in the same tab', async () => {
-    mocks.status.value = { ...baseStatus, oauth_configured: true, flows: ['browser'], client_source: 'bundled', client_name: 'Some App' };
+    mocks.status.value = { ...baseStatus, oauth_configured: true, flows: ['browser'], client_source: 'bundled', client_name: 'Civitai ComfyNodes', unavailable_reason: null };
     mocks.start.mockResolvedValue({ flow: 'browser', authorization_url: 'https://auth.civitai.com/authorize?x', session_id: 's' });
     const wrapper = panel();
     expect(wrapper.text()).toContain('auth.consentApp');
     expect(button(wrapper, 'auth.signInCode')).toBeUndefined();
+    // The built-in client needs no client id, so the advanced settings stay closed.
+    expect(wrapper.findComponent(ExpansionPanel).props('open')).toBe(false);
+    expect(button(wrapper, 'auth.signIn').props('disabled')).toBe(false);
     button(wrapper, 'auth.signIn').vm.$emit('click');
     await flushPromises();
     expect(mocks.start).toHaveBeenCalledWith({ returnTo: '/#/settings', flow: 'auto' });
@@ -149,11 +152,20 @@ describe('signing in with Civitai', () => {
     wrapper.unmount();
   });
 
-  it('says why a returning sign-in failed, and cleans the address', () => {
-    mocks.status.value = { ...baseStatus, oauth_configured: true, flows: ['browser'] };
-    mocks.query = { civitai: 'error', civitai_reason: 'denied' };
+  it('explains a server the built-in sign-in cannot return to', () => {
+    mocks.status.value = { ...baseStatus, oauth_configured: true, flows: [], client_source: 'bundled', client_name: 'Civitai ComfyNodes', unavailable_reason: 'callback_unsupported' };
     const wrapper = panel();
-    expect(useSnackbar().state.queue.at(-1)?.text).toBe('auth.reasons.denied');
+    expect(button(wrapper, 'auth.signIn').props('disabled')).toBe(true);
+    expect(wrapper.text()).toContain('auth.unavailable.callback_unsupported');
+    expect(wrapper.text()).not.toContain('auth.consentApp');
+    wrapper.unmount();
+  });
+
+  it.each(['denied', 'insufficient_scope'])('says why a returning sign-in failed (%s), and cleans the address', (reason) => {
+    mocks.status.value = { ...baseStatus, oauth_configured: true, flows: ['browser'] };
+    mocks.query = { civitai: 'error', civitai_reason: reason };
+    const wrapper = panel();
+    expect(useSnackbar().state.queue.at(-1)?.text).toBe(`auth.reasons.${reason}`);
     expect(mocks.replace).toHaveBeenCalledWith({ query: { civitai: undefined, civitai_reason: undefined } });
     wrapper.unmount();
   });

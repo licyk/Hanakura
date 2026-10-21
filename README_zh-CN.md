@@ -222,23 +222,46 @@ API 从不返回令牌。
 hanakura config set sources.civitai.token <token>       # 或 HANAKURA_SOURCES__CIVITAI__TOKEN
 ```
 
-**已连接账号**（OAuth）。在 Civitai 网站上登录并授权；Hanakura 只申请 `UserRead | ModelsRead`，
-从不申请生成或 Buzz 相关权限。有两种登录方式：
+**已连接账号**（OAuth）。在 Civitai 网站上登录并授权，无需注册或配置任何东西：
 
-- **在浏览器中**（带 PKCE 的授权码流程）：设置 → Civitai 认证 → 使用 Civitai 登录。Civitai 会把
-  浏览器送回本服务器。
-- **使用验证码**（设备授权），适用于另一台机器上的浏览器或命令行：`hanakura auth connect` 会输出
-  一个短验证码，可在任意设备上的 Civitai 页面确认。`--no-open` 只输出地址，`--json` 输出结果，
-  Ctrl+C 取消。
+```bash
+hanakura webui        # 然后在 设置 → Civitai 认证 中点击“使用 Civitai 登录”
+hanakura auth status  # 当前使用哪种凭据，以及它保存在哪里
+```
 
-登录需要一个 OAuth 应用。Hanakura 计划内置一个，让任何人都无需注册，但目前还没有经过验证的内置应用
-（见 `plan.md`）。在此之前，请在 Civitai 注册自己的应用并填写其 client id：
+Hanakura 以 **Civitai ComfyNodes** 的身份登录，这是 Civitai 官方 ComfyUI 节点的公开 OAuth 应用，
+因此 Civitai 授权页显示的是这个名字；Hanakura 自己没有注册应用。它申请的权限是 `1`（`UserRead`），
+从不申请生成或 Buzz 相关权限：该应用申请 `UserRead | ModelsRead` 会被拒绝。用这一配置在真实账号上
+登录并随后下载已经成功过（见 `plan1.md`），但连接了账号并不保证每个模型都能下载；下载被拒绝时会如实报告。
+
+内置登录只支持浏览器方式（带 PKCE 的授权码流程），并返回运行 Hanakura 的电脑上的 `/civitai/callback`，
+因此需要 Hanakura 在本机、以地址根路径提供服务——也就是在那台电脑上默认启动的 `hanakura webui`。
+使用路径前缀（`--api-prefix`、嵌入到其他应用）、经过反向代理，或者从另一台机器上的浏览器访问时，
+内置登录都不可用，设置页会给出说明。此时请使用 API 令牌，或者使用自己的 OAuth 应用（见下文）。
+
+**从 0.1.7 或更早版本升级。** 申请的权限以前默认为 `5`，这些版本写入的 `settings.toml` 可能保留着
+这个值，而内置应用会以 `invalid_scope` 拒绝它。Hanakura 不会修改已保存的值，请自行设置：
+
+```bash
+hanakura config set auth.civitai.oauth_scope 1
+hanakura --data-dir /path/to/data config set auth.civitai.oauth_scope 1   # 使用单独的数据目录时，
+hanakura webui --data-dir /path/to/data                                   # 启动时也用同一个目录
+```
+
+`HANAKURA_AUTH__CIVITAI__OAUTH_SCOPE` 会覆盖保存的值，宿主应用也可能固定这个设置，这两种情况下修改
+文件都不会生效。之前保存的 client id 仍然优先于内置应用：要使用内置应用，请清除
+`auth.civitai.oauth_client_id`（以及 `HANAKURA_AUTH__CIVITAI__OAUTH_CLIENT_ID`，如果设置了）。
+
+**自己的 OAuth 应用。** 在 Civitai 注册一个应用并填写其 client id，它会完全取代内置应用。它申请的是
+`auth.civitai.oauth_scope`，默认同样为 `1`；只有在你的应用被允许时，才在那里申请更多权限。除浏览器
+之外，如果 Civitai 给了它设备授权，它还可以**使用验证码**登录，适用于另一台机器上的浏览器或命令行：
+`hanakura auth connect` 会输出一个短验证码，可在任意设备上的 Civitai 页面确认。`--no-open` 只输出
+地址，`--json` 输出结果，Ctrl+C 取消。使用内置应用时，`hanakura auth connect` 会说明它只能通过
+Web 界面登录。
 
 ```bash
 hanakura config set auth.civitai.oauth_client_id <client id>
-hanakura webui        # 然后在 设置 → Civitai 认证 中点击“使用 Civitai 登录”
-hanakura auth connect # 或者在应用允许设备授权时使用验证码登录
-hanakura auth status  # 当前使用哪种凭据，以及它保存在哪里
+hanakura auth connect # 在应用允许设备授权时使用验证码登录
 ```
 
 在 Civitai 注册的回调地址必须与服务器实际使用的完全一致，即你打开 Hanakura 所用的地址，例如

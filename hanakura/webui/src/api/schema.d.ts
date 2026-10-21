@@ -861,7 +861,7 @@ export interface components {
             oauth_client_id: string | null;
             /**
              * Oauth Scope
-             * @default 5
+             * @default 1
              */
             oauth_scope: number;
             /**

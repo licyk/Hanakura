@@ -236,27 +236,58 @@ Two ways, side by side. Neither replaces the other, and nothing switches between
 hanakura config set sources.civitai.token <token>       # or HANAKURA_SOURCES__CIVITAI__TOKEN
 ```
 
-**A connected account** (OAuth). Sign in on Civitai's website and grant access; Hanakura asks
-only for `UserRead | ModelsRead`, never for generation or Buzz. Two ways to sign in:
-
-- **In the browser** (Authorization Code with PKCE): Settings → Civitai authentication → Sign in
-  with Civitai. Civitai sends the browser back to this server.
-- **With a code** (device authorization), for a browser on another machine or the command line:
-  `hanakura auth connect` prints a short code to confirm on Civitai's page from any device.
-  `--no-open` only prints the address, `--json` prints the outcome, and Ctrl+C cancels.
-
-Signing in needs an OAuth application. Hanakura is meant to ship a built-in one, so that nobody
-has to register anything, but none has been verified yet (see `plan.md`): until one is, register
-your own with Civitai and set its client id:
+**A connected account** (OAuth). Sign in on Civitai's website and grant access, with nothing to
+register or configure:
 
 ```bash
-hanakura config set auth.civitai.oauth_client_id <client id>
 hanakura webui        # then Settings → Civitai authentication → Sign in with Civitai
-hanakura auth connect # or sign in with a code, if the application allows the device grant
 hanakura auth status  # which credential is in use, and where it is kept
 ```
 
-Register the callback with Civitai exactly as the server uses it: the address you open Hanakura
+Hanakura signs in as **Civitai ComfyNodes**, the public OAuth application of Civitai's own
+ComfyUI nodes, so that is the name Civitai's consent page shows; Hanakura has no registered
+application of its own. It asks for scope `1` (`UserRead`), never for generation or Buzz:
+the same application is refused `UserRead | ModelsRead`. A sign-in with this configuration and a
+download afterwards worked when tried on a real account (`plan1.md`), but a connected account is
+not a promise that every model downloads; a refused download is reported as such.
+
+This built-in sign-in works in the browser only (Authorization Code with PKCE) and comes back to
+`/civitai/callback` on the computer running Hanakura, so it needs Hanakura served locally at the
+root of its address — `hanakura webui` on that computer, as it starts by default. It is not
+available behind a path prefix (`--api-prefix`, an embedding host), through a reverse proxy, or
+from a browser on another machine; the settings page says so there. Use an API token in those
+cases, or your own OAuth application (below).
+
+**Upgrading from 0.1.7 or earlier.** The requested scope used to default to `5`, and a
+`settings.toml` written by those versions may keep that value; the built-in application refuses
+it with `invalid_scope`. Hanakura does not change a saved value, so set it yourself:
+
+```bash
+hanakura config set auth.civitai.oauth_scope 1
+hanakura --data-dir /path/to/data config set auth.civitai.oauth_scope 1   # for a separate data directory,
+hanakura webui --data-dir /path/to/data                                   # started with the same one
+```
+
+`HANAKURA_AUTH__CIVITAI__OAUTH_SCOPE` overrides the saved value, and a host application may pin
+it, so editing the file has no effect while either applies. A client id saved earlier still wins
+over the built-in application: clear `auth.civitai.oauth_client_id` (and any
+`HANAKURA_AUTH__CIVITAI__OAUTH_CLIENT_ID`) to use it.
+
+**Your own OAuth application.** Register one with Civitai and set its client id; it replaces the
+built-in one entirely. It asks for `auth.civitai.oauth_scope`, which also defaults to `1`; ask
+for more there only if your application is allowed it. Besides the browser, it can sign in **with
+a code** (device authorization) if Civitai gave it that grant — for a browser on another machine
+or the command line: `hanakura auth connect` prints a short code to confirm on Civitai's page
+from any device. `--no-open` only prints the address, `--json` prints the outcome, and Ctrl+C
+cancels. With the built-in application, `hanakura auth connect` explains that it signs in only
+through the web UI.
+
+```bash
+hanakura config set auth.civitai.oauth_client_id <client id>
+hanakura auth connect # sign in with a code, if the application allows the device grant
+```
+
+Register its callback with Civitai exactly as the server uses it: the address you open Hanakura
 at, for example `http://127.0.0.1:7865/api/v1/auth/civitai/callback` (`localhost` and
 `127.0.0.1` are different addresses here). On another host, or when working on the UI with the
 Vite dev server, list the exact URLs:

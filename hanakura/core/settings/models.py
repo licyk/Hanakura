@@ -93,8 +93,9 @@ class LibrarySettings(Record):
 
 AuthMethod = Literal["manual", "oauth"]
 
-# UserRead | ModelsRead, the minimum for browsing and downloading (plan section 4).
-DEFAULT_OAUTH_SCOPE = 5
+# UserRead, the sign-in baseline: the bundled client is refused UserRead | ModelsRead (5) and was
+# shown to sign in and download with this (plan1.md). Wider permissions are asked for explicitly.
+DEFAULT_OAUTH_SCOPE = 1
 CIVITAI_AUTH_BASE_URL = "https://auth.civitai.com"
 
 
@@ -108,7 +109,7 @@ class CivitaiAuthSettings(Record):
     method: AuthMethod = "manual"
     # Off stops new authorizations; connected credentials stay, and nothing switches method.
     oauth_enabled: bool = True
-    # Empty means the bundled client, once one has been verified (core/auth/clients.py).
+    # Empty means the bundled client, Civitai ComfyNodes (core/auth/clients.py). A value always wins.
     oauth_client_id: str | None = None
     oauth_scope: int = Field(default=DEFAULT_OAUTH_SCOPE, ge=1)
     # The authorization service, kept apart from the model API's base_url on purpose.

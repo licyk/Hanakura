@@ -59,7 +59,7 @@ def callback_url(request: Request, services: ServicesDep, client: ResolvedClient
     ``ValidationError`` when Civitai has no way back to this deployment.
     """
     if client is not None and client.callback_path:
-        return _root_callback(request, services, client.callback_path)
+        return _root_callback(request, services, client)
     base = getattr(request.app.state, "public_base_url", None)
     allowed = services.settings.settings.auth.civitai.redirect_uris
     if base:
@@ -85,20 +85,21 @@ def callback_url(request: Request, services: ServicesDep, client: ResolvedClient
         if bound in ("0.0.0.0", "::"):
             # The browser is on another machine: its own localhost is not this server.
             raise ValidationError(
-                "Civitai can only call back to an address registered for this server: list it in auth.civitai.redirect_uris, or sign in with a device code.",
+                "Civitai can only call back to an address registered for this server: list it in auth.civitai.redirect_uris.",
                 {"reason": "callback_unsupported"},
             )
         host = "127.0.0.1" if bound == "localhost" else bound
     return f"http://{_bracket(host)}:{port}{path}"
 
 
-def _root_callback(request: Request, services: ServicesDep, path: str) -> str:
+def _root_callback(request: Request, services: ServicesDep, client: ResolvedClient) -> str:
     """A loopback callback at a fixed root path, as a bundled client's registration requires."""
+    path = client.callback_path
     bound = getattr(request.app.state, "bound_host", None) or services.settings.settings.server.host
     if not getattr(request.app.state, "root_callback", False) or public_prefix(request) or not is_loopback(bound):
         raise ValidationError(
-            f"The bundled Civitai sign-in returns to {path} on this computer, which needs Hanakura served locally at the root of its address. "
-            "Sign in with a device code, use an API token, or set your own OAuth application.",
+            f"The built-in Civitai sign-in returns to {path} on the computer running Hanakura, so it only works there, "
+            "with Hanakura bound to a loopback address and served at the root of that address, with no path prefix.",
             {"reason": "callback_unsupported"},
         )
     host = _loopback_request_host(request) or "127.0.0.1"
