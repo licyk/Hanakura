@@ -94,7 +94,7 @@ class LibrarySettings(Record):
 AuthMethod = Literal["manual", "oauth"]
 
 # UserRead, the sign-in baseline: the bundled client is refused UserRead | ModelsRead (5) and was
-# shown to sign in and download with this (plan1.md). Wider permissions are asked for explicitly.
+# shown to sign in and download with this (AGENTS.md §15). Wider permissions are asked for explicitly.
 DEFAULT_OAUTH_SCOPE = 1
 CIVITAI_AUTH_BASE_URL = "https://auth.civitai.com"
 

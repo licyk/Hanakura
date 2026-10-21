@@ -381,8 +381,8 @@ and declare `capabilities` so the filter bar only offers filters that work.
   the same id (the callback follows the profile's source); without one, the first bundled profile
   marked `verified` is used. That is **Civitai ComfyNodes** (`2d61872c-…`), browser only, with its
   fixed `/civitai/callback`: it refuses the device grant and scope 5, and a scope 1 sign-in and a
-  download afterwards succeeded on the user's machine (`plan1.md` §2 — user-reported, and the
-  file's account requirement and credential source were not recorded). `verified` means that
+  download afterwards succeeded on the user's machine (§15 — user-reported, and the file's account
+  requirement and credential source were not recorded). `verified` means that
   configuration was seen to work, not that any permission, download or token lifecycle was
   proven. Its name is shown as the consent identity; never relabel it as Hanakura. With no
   verified profile the feature reports `no_client`; tests that need that inject `profiles = ()`.
@@ -390,8 +390,11 @@ and declare `capabilities` so the filter bar only offers filters that work.
   service is `https://auth.civitai.com`, a fixed host kept apart from the model API, with
   `/api/auth/oauth/{authorize,token,userinfo,revoke,device,device-token}` (device codes are polled
   at `device-token`, not the token endpoint). The scope is a bitmask, `auth.civitai.oauth_scope`,
-  defaulting to `1` (`UserRead`) for every client since `plan1.md`: the bundled client is refused
-  `5` (`UserRead | ModelsRead`). A saved value is never rewritten — files written before then
+  defaulting to `1` (`UserRead`) for every client after 0.1.7 (which had `5`): the bundled client is
+  refused `5` (`UserRead | ModelsRead`). Civitai's download route and public v1 REST routes take an
+  OAuth bearer as the user's session without checking its scope bits (tRPC procedures do check),
+  which is why a `UserRead` token downloads; that is Civitai's behaviour, not a promise, so do not
+  build on any other unchecked scope. A saved value is never rewritten — files written before then
   usually hold `5`, since settings are saved whole — and `invalid_scope` is never retried with
   less; the README tells users to set `1`. Ask for more only when an actual call needs it, accept
   a grant that covers the request (a superset is kept as granted), and refuse a connection whose
@@ -762,16 +765,25 @@ One line each; the section in brackets explains why.
 
 ## 15. Known gaps
 
-- The bundled sign-in rests on one user-reported run (2026-10-21, `plan1.md` §2): Civitai
-  ComfyNodes refused scope 5 and accepted scope 1, and a download then succeeded — through a
-  temporary launcher, not a normal start, and without recording the model, whether it needed an
+- The bundled sign-in rests on one user-reported run (2026-10-21): Civitai ComfyNodes refused
+  scope 5 with `invalid_scope` and signed in with scope 1, and a download then succeeded — through
+  a temporary launcher, not a normal start, and without recording the model, whether it needed an
   account, or whether another credential was in use. Still unchecked live: the normal start-up
   path, refresh, restart recovery, revocation, the production credential store, an
-  account-only download with OAuth as the confirmed credential, and the device flow (no bundled
-  client has it; Link Desktop and the Civitai CLI have it but refuse scope 5 and were never tried
-  with 1). No complete Civitai file was ever downloaded end to end by an agent (they run to
-  hundreds of megabytes); a mock test covers the flow, including the token being dropped on the
-  redirect to storage.
+  account-only download with OAuth as the confirmed credential, and the device flow. No complete
+  Civitai file was ever downloaded end to end by an agent (they run to hundreds of megabytes); a
+  mock test covers the flow, including the token being dropped on the redirect to storage.
+- What else is known about candidate clients, from anonymous probes of
+  `POST https://auth.civitai.com/api/auth/oauth/device` on 2026-10-21 and from source
+  (civitai/civitai `50edece`, civitai-comfy-nodes `1bcb195`, civitai-link-desktop `9f39a5d`):
+  ComfyNodes answers `unauthorized_client` (no device grant); Civitai Link Desktop
+  (`civitai-link-desktop`) and the Civitai CLI (`civitai-cli`) issue a code for scope 1 and refuse
+  5 as exceeding their permissions, but no one has signed in through them. The authorization
+  endpoint sends an anonymous browser to `/login` before checking client, redirect or scope, and it
+  enforces a per-client access mode (open, testers only, disabled) for third-party clients. A
+  loopback redirect matches a registered one on any port and any of `localhost`, `127.0.0.1`,
+  `::1`, with the same scheme and path; anything else must match exactly. Revocation always
+  answers 200.
 - ControlNet, embedding and upscaler detection rules have only synthetic fixtures.
 - hf-mirror and Gitee AI endpoints were never tested from a network that needs them.
 - Uploads — dropped files and the file picker — are covered at the API level and in unit tests,

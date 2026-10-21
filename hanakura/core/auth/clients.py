@@ -4,7 +4,7 @@ An explicit ``auth.civitai.oauth_client_id`` always wins and is never replaced b
 Without one, the first bundled profile marked ``verified`` is used. ``verified`` means a real
 sign-in with the configuration Hanakura sends — this client, its callback, the default scope —
 was seen to succeed; it promises no particular permission, grant or token lifecycle, and the
-evidence and its limits are in ``plan1.md``. With no verified profile, the interface asks for a
+evidence and its limits are in AGENTS.md §15. With no verified profile, the interface asks for a
 client id.
 """
 
@@ -49,7 +49,7 @@ BUNDLED_PROFILES: tuple[ClientProfile, ...] = (
         flows=frozenset({"browser"}),
         callback_path="/civitai/callback",
         verified=True,
-        evidence="plan1.md section 2 (user-reported: a scope 1 sign-in and a download succeeded)",
+        evidence="user-reported 2026-10-21: a scope 1 sign-in and a download succeeded (AGENTS.md section 15)",
     ),
 )
 

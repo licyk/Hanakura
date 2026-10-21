@@ -248,7 +248,7 @@ Hanakura signs in as **Civitai ComfyNodes**, the public OAuth application of Civ
 ComfyUI nodes, so that is the name Civitai's consent page shows; Hanakura has no registered
 application of its own. It asks for scope `1` (`UserRead`), never for generation or Buzz:
 the same application is refused `UserRead | ModelsRead`. A sign-in with this configuration and a
-download afterwards worked when tried on a real account (`plan1.md`), but a connected account is
+download afterwards worked when tried on a real account, but a connected account is
 not a promise that every model downloads; a refused download is reported as such.
 
 This built-in sign-in works in the browser only (Authorization Code with PKCE) and comes back to

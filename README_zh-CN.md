@@ -232,7 +232,7 @@ hanakura auth status  # 当前使用哪种凭据，以及它保存在哪里
 Hanakura 以 **Civitai ComfyNodes** 的身份登录，这是 Civitai 官方 ComfyUI 节点的公开 OAuth 应用，
 因此 Civitai 授权页显示的是这个名字；Hanakura 自己没有注册应用。它申请的权限是 `1`（`UserRead`），
 从不申请生成或 Buzz 相关权限：该应用申请 `UserRead | ModelsRead` 会被拒绝。用这一配置在真实账号上
-登录并随后下载已经成功过（见 `plan1.md`），但连接了账号并不保证每个模型都能下载；下载被拒绝时会如实报告。
+登录并随后下载已经成功过，但连接了账号并不保证每个模型都能下载；下载被拒绝时会如实报告。
 
 内置登录只支持浏览器方式（带 PKCE 的授权码流程），并返回运行 Hanakura 的电脑上的 `/civitai/callback`，
 因此需要 Hanakura 在本机、以地址根路径提供服务——也就是在那台电脑上默认启动的 `hanakura webui`。
