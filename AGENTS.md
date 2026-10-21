@@ -474,7 +474,8 @@ says so while it applies.
   cached for a year. An unknown path falls back to `index.html` only when the request accepts
   HTML, so a mistyped asset or API path still gets a 404.
 - The server binds the listening socket itself and hands it to uvicorn, so the port that was
-  tested is the port that serves. It moves up on collision unless `server.strict_port`, prints
+  tested is the port that serves. It moves up on collision unless `server.strict_port` (with no
+  attempt cap: up to 65535, then wrapping round to 1024; it fails only when no port binds), prints
   `SERVER_READY url=…` on stdout, and writes `server.json` in the data directory.
 
 ## 11. Web UI
