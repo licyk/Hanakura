@@ -106,6 +106,9 @@ class CivitaiAuthSettings(Record):
     """
 
     method: AuthMethod = "manual"
+    # Off stops new authorizations; connected credentials stay, and nothing switches method.
+    oauth_enabled: bool = True
+    # Empty means the bundled client, once one has been verified (core/auth/clients.py).
     oauth_client_id: str | None = None
     oauth_scope: int = Field(default=DEFAULT_OAUTH_SCOPE, ge=1)
     # The authorization service, kept apart from the model API's base_url on purpose.

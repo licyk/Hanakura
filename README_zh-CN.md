@@ -222,27 +222,41 @@ API 从不返回令牌。
 hanakura config set sources.civitai.token <token>       # 或 HANAKURA_SOURCES__CIVITAI__TOKEN
 ```
 
-**已连接账号**（OAuth，带 PKCE 的授权码流程）。它需要在 Civitai 注册一个 OAuth 应用，因为
-client id 标识的是*这一份安装*：
+**已连接账号**（OAuth）。在 Civitai 网站上登录并授权；Hanakura 只申请 `UserRead | ModelsRead`，
+从不申请生成或 Buzz 相关权限。有两种登录方式：
+
+- **在浏览器中**（带 PKCE 的授权码流程）：设置 → Civitai 认证 → 使用 Civitai 登录。Civitai 会把
+  浏览器送回本服务器。
+- **使用验证码**（设备授权），适用于另一台机器上的浏览器或命令行：`hanakura auth connect` 会输出
+  一个短验证码，可在任意设备上的 Civitai 页面确认。`--no-open` 只输出地址，`--json` 输出结果，
+  Ctrl+C 取消。
+
+登录需要一个 OAuth 应用。Hanakura 计划内置一个，让任何人都无需注册，但目前还没有经过验证的内置应用
+（见 `plan.md`）。在此之前，请在 Civitai 注册自己的应用并填写其 client id：
 
 ```bash
 hanakura config set auth.civitai.oauth_client_id <client id>
-hanakura webui        # 然后在 设置 → Civitai 认证 中点击连接
+hanakura webui        # 然后在 设置 → Civitai 认证 中点击“使用 Civitai 登录”
+hanakura auth connect # 或者在应用允许设备授权时使用验证码登录
 hanakura auth status  # 当前使用哪种凭据，以及它保存在哪里
 ```
 
-在 Civitai 注册的回调地址必须与服务器实际使用的完全一致，默认是
-`http://127.0.0.1:7865/api/v1/auth/civitai/callback`。使用其他端口或主机，或者用 Vite
-开发服务器开发界面时，请列出确切的地址：
+在 Civitai 注册的回调地址必须与服务器实际使用的完全一致，即你打开 Hanakura 所用的地址，例如
+`http://127.0.0.1:7865/api/v1/auth/civitai/callback`（这里 `localhost` 和 `127.0.0.1` 是不同的
+地址）。使用其他主机，或者用 Vite 开发服务器开发界面时，请列出确切的地址：
 
 ```bash
 hanakura config set auth.civitai.redirect_uris '["http://127.0.0.1:7865/api/v1/auth/civitai/callback", "http://localhost:5173/api/v1/auth/civitai/callback"]'
 ```
 
+服务器监听 `0.0.0.0` 时，另一台机器上的浏览器无法被送回，除非其地址列在上面；此时会改为提供验证码。
+`auth.civitai.oauth_enabled = false` 会停止新的登录，但不影响已连接的账号。
+
 令牌只保存在服务器上：有操作系统凭据存储时存入其中，否则存为数据目录中仅本人可读的文件。它们不会
 出现在 `settings.toml` 中，不会发送给浏览器，也不会写入下载记录。访问令牌在过期前约一分钟刷新，
-即使多个下载同时请求也只刷新一次，轮换后的一对令牌作为整体保存。`hanakura auth disconnect`
-会撤销授权并在本地清除它，API 令牌不受影响。
+即使多个下载同时请求也只刷新一次，轮换后的一对令牌作为整体保存，并且始终通过签发它的应用刷新。
+`hanakura auth disconnect` 会取消进行中的登录、在本地清除授权并请求 Civitai 撤销它（Civitai 总是
+回答成功，因此失败会被报告，但成功并不是证明），API 令牌不受影响。
 
 环境变量优先于以上两者，生效期间设置页会有相应提示。
 

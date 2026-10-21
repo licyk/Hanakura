@@ -23,11 +23,13 @@ SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 LOOPBACK_NAMES = {"localhost", "127.0.0.1", "::1"}
 # Paths that must work without a token: the UI shell has to load so it can ask for one.
 PUBLIC_PATHS = ("/api/v1/app/health",)
-# The OAuth callback only. A browser arriving from Civitai carries no Authorization header, so
-# this one path and method is exempt from the access token; it is still checked against the
-# transaction and the browser that started it, and the Host check still applies. The other
-# /api/v1/auth routes keep normal access control.
+# The OAuth callbacks only. A browser arriving from Civitai carries no Authorization header, so
+# these exact paths, with GET, are exempt from the access token; they are still checked against
+# the sign-in and the browser that started it, and the Host check still applies. The other
+# /api/v1/auth routes keep normal access control. The root one is the bundled client's, and
+# exists only on a server that owns its root.
 OAUTH_CALLBACK_PATH = "/api/v1/auth/civitai/callback"
+ROOT_OAUTH_CALLBACK_PATH = "/civitai/callback"
 PROTECTED_PREFIXES = ("/api/", "/ws/", "/openapi.json", "/docs")
 
 
@@ -68,6 +70,7 @@ class SecurityMiddleware:
         access_token: Callable[[], str | None],
         extra_hosts: set[str] | None = None,
         prefix: str = "",
+        root_callback: bool = False,
     ) -> None:
         self.app = app
         self.bound_host = bound_host
@@ -78,7 +81,7 @@ class SecurityMiddleware:
         self.prefix = prefix
         self.public_paths = tuple(f"{prefix}{p}" for p in PUBLIC_PATHS)
         self.protected_prefixes = tuple(f"{prefix}{p}" for p in PROTECTED_PREFIXES)
-        self.callback_path = f"{prefix}{OAUTH_CALLBACK_PATH}"
+        self.callback_paths = {f"{prefix}{OAUTH_CALLBACK_PATH}"} | ({ROOT_OAUTH_CALLBACK_PATH} if root_callback else set())
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] not in ("http", "websocket"):
@@ -116,7 +119,7 @@ class SecurityMiddleware:
 
         token = self.access_token()
         path = route_path(scope)
-        is_callback = path == self.callback_path and method == "GET"
+        is_callback = path in self.callback_paths and method == "GET"
         needs_token = path.startswith(self.protected_prefixes) and not path.startswith(self.public_paths) and not is_callback
         if token and needs_token:
             given = request_token(scope, headers)

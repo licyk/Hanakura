@@ -1,10 +1,13 @@
 """source list, search, info."""
 
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 import typer
 
-from hanakura.cli.output import console, human_size, open_services, print_json, print_table
+from hanakura.cli.output import console, err_console, human_size, open_services, print_json, print_table
+
+if TYPE_CHECKING:
+    from hanakura.core.auth.models import CivitaiAuthStatus
 
 
 def auth_status(json_output: Annotated[bool, typer.Option("--json", help="Print JSON")] = False) -> None:
@@ -21,7 +24,8 @@ def auth_status(json_output: Annotated[bool, typer.Option("--json", help="Print 
         ("Manual token", "configured" if status.manual_token_configured else "not configured"),
         ("Environment override", "yes" if status.env_override else "no"),
         ("OAuth state", status.oauth_state),
-        ("OAuth client id", "configured" if status.oauth_configured else "not configured"),
+        ("OAuth client", _client_label(status)),
+        ("Sign-in (web UI)", ", ".join(status.flows) or "-"),
         ("Account", status.account.username or status.account.id if status.account else "-"),
         ("Token expires", status.expires_at.isoformat() if status.expires_at else "-"),
         ("Credentials kept in", storage),
@@ -31,6 +35,16 @@ def auth_status(json_output: Annotated[bool, typer.Option("--json", help="Print 
         console.print(f"[yellow]{status.error}[/yellow]")
     if status.env_override:
         console.print("An environment variable supplies the token; remove it before OAuth can take effect.")
+
+
+def _client_label(status: "CivitaiAuthStatus") -> str:
+    if not status.oauth_enabled:
+        return "turned off"
+    if status.client_source == "custom":
+        return "your own (auth.civitai.oauth_client_id)"
+    if status.client_source == "bundled":
+        return f"bundled ({status.client_name})"
+    return "none: set auth.civitai.oauth_client_id"
 
 
 def auth_use(
@@ -53,15 +67,65 @@ def auth_disconnect() -> None:
         console.print(f"[yellow]{status.error}[/yellow]")
 
 
-def auth_connect() -> None:
-    """Explain how to connect a Civitai account, which needs a browser."""
+FLOWS = ("auto", "browser", "device")
+# The command line has no address Civitai could send a browser back to.
+NO_CALLBACK = "The command line cannot receive Civitai's callback: sign in from Settings in the web UI (hanakura webui), or use --flow device."
+
+
+def auth_connect(
+    flow: Annotated[str, typer.Option(help="auto, browser or device. The command line signs in with a device code")] = "auto",
+    no_open: Annotated[bool, typer.Option("--no-open", help="Print the address instead of opening a browser")] = False,
+    json_output: Annotated[bool, typer.Option("--json", help="Print the sign-in's outcome as JSON")] = False,
+) -> None:
+    """Connect a Civitai account: confirm a short code on Civitai's website, from any device."""
+    import webbrowser
+
+    from hanakura.core.errors import AuthRequiredError, ConflictError, SourceError, ValidationError
+
+    if flow not in FLOWS:
+        raise typer.BadParameter("flow must be auto, browser or device")
+    if flow == "browser":
+        raise ValidationError(NO_CALLBACK, {"reason": "callback_unsupported"})
+    # Prompts go to stderr with --json, so stdout carries only the result.
+    out = err_console if json_output else console
     with open_services() as s:
-        status = s.auth.status()
-        port = s.settings.settings.server.port
-    if not status.oauth_configured:
-        console.print("Civitai OAuth is not configured. Set it with:\n  hanakura config set auth.civitai.oauth_client_id <client id>")
-    console.print(f"Start the server and connect from Settings in the web UI:\n  hanakura webui\n  then open http://127.0.0.1:{port}/#/settings")
-    console.print("A manual API token works without any of this:\n  hanakura config set sources.civitai.token <token>")
+        chosen = s.auth.choose_flow(flow, browser_available=False, browser_reason=NO_CALLBACK)  # type: ignore[arg-type]
+        start, secret = s.auth.start(flow=chosen)
+        address = start.authorization_url
+        out.print(f"Open {address}")
+        if start.user_code:
+            out.print(f"and confirm the code [bold]{start.user_code}[/bold] (valid until {start.expires_at.astimezone():%H:%M}).")
+        if not no_open:
+            try:
+                webbrowser.open(address)
+            except Exception as e:  # noqa: BLE001 - no browser here: the address above is enough
+                out.print(f"Could not open a browser ({type(e).__name__}).")
+        out.print("Waiting for the sign-in; Ctrl+C cancels it.")
+        try:
+            result = s.auth.wait_session(start.session_id, secret)
+        except KeyboardInterrupt:
+            # Cancelled before anything it would have connected is stored.
+            s.auth.cancel_session(start.session_id, secret)
+            raise
+        status = s.auth.status(browser_available=False)
+    if json_output:
+        print_json({"session": result, "status": status})
+    elif result.status == "connected":
+        name = status.account.username or status.account.id if status.account else None
+        console.print(f"Connected the Civitai account{f' {name}' if name else ''}; requests now use it.")
+        if status.env_override:
+            console.print("An environment variable supplies an API token, which still takes precedence.")
+    if result.status == "connected":
+        return
+    message = result.error or "The sign-in did not finish."
+    detail = {"reason": result.error_code or "failed"}
+    if result.status in ("denied", "expired"):
+        raise AuthRequiredError(message, detail)
+    if result.status == "cancelled":
+        raise ConflictError(message, detail)
+    if result.error_code in ("insufficient_scope", "client_unavailable"):
+        raise AuthRequiredError(message, detail)
+    raise SourceError(message, detail)
 
 
 def source_list(json_output: Annotated[bool, typer.Option("--json", help="Print JSON")] = False) -> None:

@@ -44,6 +44,9 @@ class OAuthCredentials(Record):
     expires_at: datetime | None = None
     scope: int | None = None
     client_id: str | None = None
+    """The client that issued the pair. Refresh and revocation go through it, whatever is configured now."""
+    issuer: str | None = None
+    """The authorization service that issued the pair; records older than this field have none."""
     account: OAuthAccount = Field(default_factory=OAuthAccount)
     obtained_at: datetime | None = None
 

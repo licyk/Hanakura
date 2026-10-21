@@ -156,3 +156,73 @@ def test_data_dir_option_before_or_after_the_command(runner, tmp_path):
     r = runner.invoke(app, ["library", "root", "list", "--data-dir", str(tmp_path / "c")])
     assert r.exit_code == 0, r.output
     assert (tmp_path / "c" / "hanakura.db").is_file() and not (tmp_path / "data" / "hanakura.db").exists()
+
+
+@pytest.fixture
+def device_services(tmp_path, monkeypatch):
+    """``auth connect`` against a stand-in Civitai whose device sign-in is approved at the second poll."""
+    from contextlib import contextmanager
+
+    import httpx
+
+    from hanakura.core.context import build_services
+    from tests.core.test_auth import CLIENT_ID, FakeClock, Provider
+
+    provider = Provider()
+    provider.polls = [httpx.Response(400, json={"error": "authorization_pending"}), "ok"]
+    services = build_services(data_dir=tmp_path / "data", environ={}, transport=httpx.MockTransport(provider))
+    services.settings.update({"auth": {"civitai": {"oauth_client_id": CLIENT_ID, "use_keyring": False}}})
+    clock = FakeClock()
+    services.auth.transactions.clock = clock
+    services.auth.device._wait = clock.wait
+    opened: list[str] = []
+
+    @contextmanager
+    def open_services():
+        yield services
+
+    monkeypatch.setattr("hanakura.cli.commands.search.open_services", open_services)
+    monkeypatch.setattr("webbrowser.open", opened.append)
+    yield services, provider, opened
+    services.close()
+
+
+def test_auth_connect_signs_in_with_a_device_code(runner, device_services):
+    services, _provider, opened = device_services
+    result = runner.invoke(get_app(), ["auth", "connect", "--no-open"])
+    assert result.exit_code == 0, result.output
+    assert "ABCD-EFGH" in result.output and "https://auth.civitai.com/login/oauth/device?code=ABCD-EFGH" in result.output
+    assert "Connected the Civitai account someone" in result.output
+    assert opened == [] and services.auth.status().method == "oauth"
+
+
+def test_auth_connect_json_carries_no_credential(runner, device_services):
+    _services, _provider, opened = device_services
+    result = runner.invoke(get_app(), ["auth", "connect", "--json", "--flow", "device"])
+    assert result.exit_code == 0, result.output
+    # Older Click mixes stderr, where the prompts go, into stdout.
+    payload = json.loads(result.stdout[result.stdout.index("{\n") :])
+    assert payload["session"]["status"] == "connected" and payload["status"]["oauth_state"] == "connected"
+    assert not any(secret in result.output for secret in ("access-1", "refresh-1", "the-device-code"))
+    assert opened == ["https://auth.civitai.com/login/oauth/device?code=ABCD-EFGH"]
+
+
+def test_auth_connect_reports_a_refusal(runner, device_services):
+    from hanakura.core.errors import AuthRequiredError
+
+    _services, provider, _opened = device_services
+    import httpx
+
+    provider.polls = [httpx.Response(400, json={"error": "access_denied"})]
+    result = runner.invoke(get_app(), ["auth", "connect", "--no-open"])
+    assert isinstance(result.exception, AuthRequiredError) and result.exception.exit_code == 5
+
+
+def test_auth_connect_refuses_what_it_cannot_do(runner):
+    from hanakura.core.errors import ValidationError
+
+    browser = runner.invoke(get_app(), ["auth", "connect", "--flow", "browser"])
+    assert isinstance(browser.exception, ValidationError) and "web UI" in browser.exception.message
+    # No client id, and no verified bundled client: the command says how to get one.
+    unconfigured = runner.invoke(get_app(), ["auth", "connect"])
+    assert isinstance(unconfigured.exception, ValidationError) and "oauth_client_id" in unconfigured.exception.message

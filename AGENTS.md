@@ -375,19 +375,37 @@ and declare `capabilities` so the filter bar only offers filters that work.
 
 - **manual**: a personal API token in settings or the environment. Works with no OAuth
   application; it is the default and must stay fully functional.
-- **oauth**: Authorization Code with **PKCE (S256)** as a public client — no client secret is
-  shipped or stored. `auth.civitai.oauth_client_id` must be set; without it the feature reports
-  itself as unconfigured. The authorization service is `https://auth.civitai.com`, a fixed host
-  kept apart from the model API, with `/api/auth/oauth/{authorize,token,userinfo,revoke}`. The
-  scope is the bitmask `5` (`UserRead | ModelsRead`), which covers browsing and downloading; ask
-  for more only when an actual call needs it. Access tokens last about an hour and refresh
-  tokens about thirty days, but the values from the token response are what count. Device Flow
-  exists as a later option for remote or CLI-only use; it is not implemented. Transactions are
-  single-use, live five minutes, and are bound to the browser that started them by an HttpOnly,
-  SameSite=Lax cookie. Tokens go to the OS credential store when available, else an owner-only
-  file. They refresh a minute before expiry, once even across threads and processes (file lock),
-  and the rotated pair is stored whole. **Never let `keyring` search its backends off macOS**
-  (`keyring.get_keyring()`, `get_all_keyring()`): the search imports its macOS backend, whose
+- **oauth**: Authorization Code with **PKCE (S256)**, or the device grant, as a public client —
+  no client secret is shipped or stored. The client comes from `core/auth/clients.py`: an explicit
+  `auth.civitai.oauth_client_id` always wins and is never replaced; without one, the first bundled
+  profile marked `verified` is used. **None is verified** (`plan.md` §12 has the evidence), so by
+  default the feature reports `no_client`. Mark a profile verified only after a real sign-in
+  showed scope 5 granted, its redirect accepted and an account-only file downloaded.
+  `oauth_enabled = false` stops new sign-ins and leaves credentials alone. The authorization
+  service is `https://auth.civitai.com`, a fixed host kept apart from the model API, with
+  `/api/auth/oauth/{authorize,token,userinfo,revoke,device,device-token}` (device codes are polled
+  at `device-token`, not the token endpoint). The scope is the bitmask `5` (`UserRead | ModelsRead`),
+  which covers browsing and downloading; ask for more only when an actual call needs it, and refuse
+  a connection whose token reports less, or no scope at all (`scope` arrives as a number, a decimal
+  string or a one-item list). Access tokens last about an hour and refresh tokens about thirty
+  days, but the values from the token response are what count. A pair records its `client_id` and
+  `issuer`, and refresh and revocation always go through those, whatever is configured now.
+
+  Every sign-in is a session in `core/auth/transactions.py` (`pending → exchanging → connected`,
+  or `denied`, `expired`, `cancelled`, `failed`), held in memory, bound to its browser by an
+  HttpOnly, SameSite=Lax cookie whose secret is reused across tabs, and carrying a snapshot of its
+  client: a settings change that alters the client cancels it, and a disconnect cancels all of
+  them. Browser sessions live five minutes, device ones as long as their code. Storing the result
+  is one commit point (`begin_commit`): before it a cancel wins and the new pair is handed back;
+  after it nothing can cancel, and the session reads `connected` only once the method switched.
+  Device polling (`core/auth/device.py`) runs in one thread per session, so reading a session never
+  reaches Civitai; it honours `interval`, adds five seconds on a 429 (Civitai's `slow_down`) or a
+  `slow_down`, retries network and 5xx failures until the deadline, accepts verification pages only
+  on the issuer's host or civitai.com over HTTPS, and is bounded to four per process. Errors carry a
+  `reason` (`AuthErrorReason`) so the interface can say what to do. Tokens go to the OS credential
+  store when available, else an owner-only file. They refresh a minute before expiry, once even
+  across threads and processes (file lock), and the rotated pair is stored whole. **Never let
+  `keyring` search its backends off macOS** (`keyring.get_keyring()`, `get_all_keyring()`): the search imports its macOS backend, whose
   `ctypes.util.find_library('Security')` runs `ld -o /dev/null`, and GNU ld deletes its output when
   the link fails, so run as root every start deleted `/dev/null`. `store._system_keyring` uses a
   backend the user configured (`PYTHON_KEYRING_BACKEND`, keyring's config file), else the usable
@@ -436,8 +454,18 @@ says so while it applies.
   whose `Sec-Fetch-Site` says cross-site, is refused; a request with neither header cannot come
   from a browser page and is allowed. A non-loopback host requires `server.access_token` on every
   request and on the socket handshake (bearer header, `hanakura_token` cookie or `?token=`).
-  The only exemption is the OAuth callback — exactly that path with GET — because the browser
-  arrives from Civitai with no header; it is still validated against the transaction and the Host.
+  The only exemptions are the OAuth callbacks — exactly those paths with GET — because the browser
+  arrives from Civitai with no header; they are still validated against the session and the Host.
+  One is `/api/v1/auth/civitai/callback` under any prefix. The other, `/civitai/callback`, is a
+  bundled client's fixed loopback path: it exists only on a server owning its root (no
+  `api_prefix`, no mount, no `public_base_url`, loopback bind), answers 404 unless the effective
+  client uses it, only completes a session sent there, and has its own cookie
+  (`hanakura_oauth_cb`, path `/civitai/callback`). Both binding cookies must survive a callback
+  while another sign-in from that browser is pending. The callback is built from the bound port and
+  the loopback name the browser used (`localhost` and `127.0.0.1` do not share cookies), never
+  from forwarding headers; a browser reaching a `0.0.0.0` server by another address gets no
+  callback, only the device flow, unless `redirect_uris` lists one. `uvicorn.access` has a filter
+  that drops callback query strings.
 - **Serving the built UI:** the folder is found through `hanakura.webui.__path__`, so a
   source checkout and an installed wheel both work with no configuration. The mount is
   registered last, after every API route and the socket. A missing `dist/` is a warning, not an
@@ -685,13 +713,15 @@ Both suites run offline.
   `httpx.MockTransport` (redirects, `Content-Disposition`, range resume, hash mismatch, 429,
   cancel mid-stream, pause and resume, crash recovery); source and hub parsing from recorded
   responses; the five port cases; OAuth (PKCE, every refusal, refresh, rotation, concurrency,
-  revocation, the manual/OAuth matrix, no credential in any response); the API with `TestClient`;
+  revocation, the manual/OAuth matrix, no credential in any response, client resolution, scope
+  checks, issuing-client ownership, cancellation and disconnect races, and the device flow on a
+  fake clock — `FakeClock` in `tests/core/test_auth.py`, so no test waits out an interval); the API with `TestClient`;
   the CLI with `CliRunner`, including a snapshot of the whole command tree; the architecture rule.
 - **Web (vitest + vue-tsc):** the base-URL helper, `ui/` components, theme generation, i18n,
   formatting, the no-literal-colours and absolute-import rules, the dev proxy filter, the
   model-card sanitising, the download cache's event ordering, and the views and components whose
-  logic is worth holding — the destination picker, the link form, the library screen and a
-  download row — mounted with `@vue/test-utils` and their queries and stores mocked. The default
+  logic is worth holding — the destination picker, the link form, the library screen, a
+  download row and the Civitai sign-in panel — mounted with `@vue/test-utils` and their queries and stores mocked. The default
   environment is happy-dom, but DOMPurify is a no-op there
   (its walk stops when happy-dom's `NodeIterator` loses the removed walk root), so
   `markdown.test.ts` and `MarkdownContent.test.ts` set `@vitest-environment jsdom` in their docblocks. Any future test that
@@ -722,10 +752,12 @@ One line each; the section in brackets explains why.
 
 ## 15. Known gaps
 
-- No Civitai OAuth application is registered, so OAuth is unconfigured by default and the real
-  authorization, refresh, revocation and authenticated download paths are untested. Device Flow is
-  not implemented. Civitai downloads of login-gated files were never tried with a real token
-  either, and no complete Civitai file was ever downloaded end to end (they run to hundreds of
+- No OAuth client is usable by default. Checked on 2026-10-21 without an account: Civitai Link
+  Desktop (`civitai-link-desktop`) and the Civitai CLI (`civitai-cli`) have the device grant but
+  refuse scope 5; Civitai ComfyNodes (`2d61872c-…`) refuses the device grant, and whether it grants
+  ModelsRead to a browser sign-in needs a signed-in account to learn (`plan.md` §12). So the real
+  authorization, refresh, revocation, device and authenticated download paths are untested.
+  Civitai downloads of login-gated files were never tried with a real token either, and no complete Civitai file was ever downloaded end to end (they run to hundreds of
   megabytes); a mock test covers the flow, including the token being dropped on the redirect to
   storage.
 - ControlNet, embedding and upscaler detection rules have only synthetic fixtures.

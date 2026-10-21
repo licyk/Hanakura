@@ -64,13 +64,20 @@ def create_app(
 
     app = HanakuraAPI(title="Hanakura", version=VERSION, lifespan=lifespan, docs_url=f"{prefix}/docs", redoc_url=None, openapi_url=f"{prefix}/openapi.json")
     app.state.services = services
+    app.state.bound_host = bound_host
     app.state.bound_port = bound_port
+    # A bundled OAuth client may return to a fixed path at the root of a loopback address; only a
+    # server that owns its root may answer there, never one a host mounted under its own prefix.
+    app.state.root_callback = not prefix
     app.state.api_prefix = prefix
     app.state.public_base_url = public_base_url
     install_error_handlers(app)
 
     for module in (app_info, settings, auth, sources, hubs, downloads, library):
         app.include_router(module.router, prefix=f"{prefix}/api")
+    if not prefix:
+        app.include_router(auth.root_router)
+    auth.redact_callback_logs()
     app.mount(f"{prefix}/ws", socket_bridge.asgi_app(prefix), name="socket")
 
     origins = services.settings.settings.server.allowed_origins
@@ -83,6 +90,7 @@ def create_app(
         access_token=lambda: services.settings.settings.server.access_token,
         extra_hosts=extra_hosts,
         prefix=prefix,
+        root_callback=not prefix,
     )
 
     # Registered last, so it only receives paths nothing else matched.

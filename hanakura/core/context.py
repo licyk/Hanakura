@@ -34,6 +34,7 @@ class Services:
     detection: DetectionService
 
     def close(self) -> None:
+        self.auth.close()
         self.downloads.shutdown()
         self.http.close()
         self.db.close()

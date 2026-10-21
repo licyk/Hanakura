@@ -102,9 +102,49 @@ export interface paths {
         put?: never;
         /**
          * Start
-         * @description Begin an authorization and return the URL for the user's browser.
+         * @description Begin a sign-in: a browser one returns Civitai's consent page, a device one its code.
          */
         post: operations["start_civitai_auth"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/civitai/sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Session
+         * @description A sign-in's state, for the browser that started it. Reading it never contacts Civitai.
+         */
+        get: operations["get_civitai_auth_session"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/civitai/sessions/{session_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Session
+         * @description Cancel a sign-in; whatever it would have connected is never stored. Cancelling twice is harmless.
+         */
+        post: operations["cancel_civitai_auth_session"];
         delete?: never;
         options?: never;
         head?: never;
@@ -139,7 +179,7 @@ export interface paths {
         put?: never;
         /**
          * Disconnect
-         * @description Revoke and forget the OAuth credentials. The manual token is left untouched.
+         * @description Cancel sign-ins in flight, forget the OAuth credentials and ask Civitai to revoke them. The manual token is left untouched.
          */
         post: operations["disconnect_civitai_auth"];
         delete?: never;
@@ -785,6 +825,18 @@ export interface components {
              * Format: date-time
              */
             expires_at: string;
+            /**
+             * Flow
+             * @default browser
+             * @enum {string}
+             */
+            flow: "browser" | "device";
+            /** Session Id */
+            session_id: string;
+            /** User Code */
+            user_code: string | null;
+            /** Verification Uri */
+            verification_uri: string | null;
         };
         /**
          * CivitaiAuthSettings
@@ -800,6 +852,11 @@ export interface components {
              * @enum {string}
              */
             method: "manual" | "oauth";
+            /**
+             * Oauth Enabled
+             * @default true
+             */
+            oauth_enabled: boolean;
             /** Oauth Client Id */
             oauth_client_id: string | null;
             /**
@@ -842,8 +899,18 @@ export interface components {
              * @enum {string}
              */
             oauth_state: "not_connected" | "pending" | "connected" | "reauthorization_required";
+            /** Oauth Enabled */
+            oauth_enabled: boolean;
             /** Oauth Configured */
             oauth_configured: boolean;
+            /** Client Source */
+            client_source: ("bundled" | "custom") | null;
+            /** Client Name */
+            client_name: string | null;
+            /** Flows */
+            flows: ("browser" | "device")[];
+            /** Unavailable Reason */
+            unavailable_reason: ("disabled" | "no_client" | "issuer_mismatch" | "callback_unsupported") | null;
             /** Manual Token Configured */
             manual_token_configured: boolean;
             /** Env Override */
@@ -855,6 +922,8 @@ export interface components {
             expires_at: string | null;
             /** Error */
             error: string | null;
+            /** Error Code */
+            error_code: ("insufficient_scope" | "redirect_mismatch" | "client_unavailable" | "callback_unsupported" | "network" | "denied" | "expired" | "binding" | "client_changed" | "cancelled" | "failed") | null;
         };
         /**
          * CombinedFolder
@@ -1383,6 +1452,39 @@ export interface components {
             model_extensions: string[];
             /** Preview Extensions */
             preview_extensions: string[];
+        };
+        /**
+         * LoginSession
+         * @description One sign-in attempt as its initiator may see it. Never holds a code, verifier or token.
+         */
+        LoginSession: {
+            /** Id */
+            id: string;
+            /**
+             * Flow
+             * @enum {string}
+             */
+            flow: "browser" | "device";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "exchanging" | "connected" | "denied" | "expired" | "cancelled" | "failed";
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** User Code */
+            user_code: string | null;
+            /** Verification Uri */
+            verification_uri: string | null;
+            /** Verification Uri Complete */
+            verification_uri_complete: string | null;
+            /** Error */
+            error: string | null;
+            /** Error Code */
+            error_code: ("insufficient_scope" | "redirect_mismatch" | "client_unavailable" | "callback_unsupported" | "network" | "denied" | "expired" | "binding" | "client_changed" | "cancelled" | "failed") | null;
         };
         /** MethodRequest */
         MethodRequest: {
@@ -2054,6 +2156,12 @@ export interface components {
              * @description Path inside the app to return to; must be relative
              */
             return_to?: string | null;
+            /**
+             * Flow
+             * @default auto
+             * @enum {string}
+             */
+            flow: "auto" | "browser" | "device";
         };
         /**
          * TrashLocation
@@ -2353,6 +2461,122 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthStart"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_civitai_auth_session: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginSession"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_civitai_auth_session: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginSession"];
                 };
             };
             /** @description Bad Request */

@@ -54,7 +54,7 @@ def get_app() -> typer.Typer:
     auth_cli = typer_factory(help="Civitai authentication: a manual API token or a connected account")
     auth_cli.command(help="Show which Civitai credential is in use", name="status")(auth_status)
     auth_cli.command(help="Choose the credential to use: manual or oauth", name="use")(auth_use)
-    auth_cli.command(help="How to connect a Civitai account", name="connect")(auth_connect)
+    auth_cli.command(help="Connect a Civitai account by confirming a code on Civitai's website", name="connect")(auth_connect)
     auth_cli.command(help="Revoke and forget the connected Civitai account", name="disconnect")(auth_disconnect)
     app.add_typer(auth_cli, name="auth")
 

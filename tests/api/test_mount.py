@@ -44,7 +44,7 @@ def test_mounted_api_security_and_socket(services, mount, prefix):
             assert message.startswith('42["library_changed",') and '"root_id":"models"' in message
         callback = client.get(f"{base}/api/v1/auth/civitai/callback?error=access_denied", follow_redirects=False)
         assert callback.status_code == 303
-        assert callback.headers["location"] == f"{base}/#/settings?civitai=error"
+        assert callback.headers["location"] == f"{base}/#/settings?civitai=error&civitai_reason=denied"
 
 
 @pytest.mark.parametrize("mount,prefix", [("", "/hub"), ("/webui", "/hub")])
@@ -62,7 +62,7 @@ def test_prefixed_oauth_cookie_round_trip(tmp_path, mount, prefix):
             assert start.status_code == 200, start.text
             assert f"Path={path}" in start.headers["set-cookie"]
             params = parse_qs(urlsplit(start.json()["authorization_url"]).query)
-            assert params["redirect_uri"] == [f"http://127.0.0.1:7865{path}/callback"]
+            assert params["redirect_uri"] == [f"http://localhost:7865{path}/callback"]
             callback = client.get(f"{path}/callback", params={"code": "code", "state": params["state"][0]}, follow_redirects=False)
             assert callback.headers["location"] == f"{mount}{prefix}/#/settings?civitai=connected"
             assert f"Path={path}" in callback.headers["set-cookie"]
@@ -83,7 +83,7 @@ def test_trusted_public_url_for_proxy_and_secure_cookie(tmp_path):
             assert "Secure" in response.headers["set-cookie"]
             assert "Path=/webui/hub/api/v1/auth/civitai" in response.headers["set-cookie"]
             services.settings.update({"auth": {"civitai": {"redirect_uris": ["https://other.example/api/v1/auth/civitai/callback"]}}})
-            assert client.post("/api/v1/auth/civitai/start").status_code == 400
+            assert client.post("/api/v1/auth/civitai/start", json={"flow": "browser"}).status_code == 400
     finally:
         services.close()
 
@@ -122,5 +122,5 @@ def test_mounted_ui_and_oauth_root_path(services, tmp_path, monkeypatch):
         assert client.get(f"{request_base}/").text == '<script src="./assets/app.js"></script>'
         assert client.get(f"{request_base}/assets/app.js").text == "window.loaded = true;"
         response = client.get(f"{request_base}/api/v1/auth/civitai/callback?error=access_denied", follow_redirects=False)
-        assert response.headers["location"] == "/webui/hub/#/settings?civitai=error"
+        assert response.headers["location"] == "/webui/hub/#/settings?civitai=error&civitai_reason=denied"
         assert "Path=/webui/hub/api/v1/auth/civitai" in response.headers["set-cookie"]

@@ -236,29 +236,47 @@ Two ways, side by side. Neither replaces the other, and nothing switches between
 hanakura config set sources.civitai.token <token>       # or HANAKURA_SOURCES__CIVITAI__TOKEN
 ```
 
-**A connected account** (OAuth, Authorization Code with PKCE). It needs an OAuth application
-registered with Civitai, because the client id identifies *this installation*:
+**A connected account** (OAuth). Sign in on Civitai's website and grant access; Hanakura asks
+only for `UserRead | ModelsRead`, never for generation or Buzz. Two ways to sign in:
+
+- **In the browser** (Authorization Code with PKCE): Settings → Civitai authentication → Sign in
+  with Civitai. Civitai sends the browser back to this server.
+- **With a code** (device authorization), for a browser on another machine or the command line:
+  `hanakura auth connect` prints a short code to confirm on Civitai's page from any device.
+  `--no-open` only prints the address, `--json` prints the outcome, and Ctrl+C cancels.
+
+Signing in needs an OAuth application. Hanakura is meant to ship a built-in one, so that nobody
+has to register anything, but none has been verified yet (see `plan.md`): until one is, register
+your own with Civitai and set its client id:
 
 ```bash
 hanakura config set auth.civitai.oauth_client_id <client id>
-hanakura webui        # then Settings → Civitai authentication → Connect
+hanakura webui        # then Settings → Civitai authentication → Sign in with Civitai
+hanakura auth connect # or sign in with a code, if the application allows the device grant
 hanakura auth status  # which credential is in use, and where it is kept
 ```
 
-Register the callback with Civitai exactly as the server uses it, by default
-`http://127.0.0.1:7865/api/v1/auth/civitai/callback`. On another port or host, or when working
-on the UI with the Vite dev server, list the exact URLs:
+Register the callback with Civitai exactly as the server uses it: the address you open Hanakura
+at, for example `http://127.0.0.1:7865/api/v1/auth/civitai/callback` (`localhost` and
+`127.0.0.1` are different addresses here). On another host, or when working on the UI with the
+Vite dev server, list the exact URLs:
 
 ```bash
 hanakura config set auth.civitai.redirect_uris '["http://127.0.0.1:7865/api/v1/auth/civitai/callback", "http://localhost:5173/api/v1/auth/civitai/callback"]'
 ```
 
+A browser on another machine cannot be sent back to a server listening on `0.0.0.0` unless its
+address is listed there; it is offered the code instead. `auth.civitai.oauth_enabled = false`
+stops new sign-ins without touching a connected account.
+
 Tokens stay on the server: in the operating system's credential store when there is one, else a
 file in the data directory readable only by you. They are never in `settings.toml`, never sent
 to the browser, and never written into download records. Access tokens are refreshed about a
 minute before they expire, once even if several downloads ask at the same time, and the rotated
-pair is stored as a whole. `hanakura auth disconnect` revokes the authorization and forgets
-it locally, leaving any API token untouched.
+pair is stored as a whole, always through the application that issued it. `hanakura auth
+disconnect` cancels any sign-in in progress, forgets the authorization locally and asks Civitai to
+revoke it (Civitai answers yes either way, so a failure is reported but success is not proof),
+leaving any API token untouched.
 
 An environment variable takes precedence over both, and the settings page says so while it does.
 
