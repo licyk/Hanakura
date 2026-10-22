@@ -64,23 +64,27 @@ watch(
   { immediate: true },
 );
 
-// -- the device sign-in in progress -----------------------------------------
+// -- the sign-in in progress -------------------------------------------------
 
 const sessionId = ref<string | null>(null);
+// Civitai's page for a browser sign-in, so a closed tab can be opened again.
+const authorizationUrl = ref('');
 const session = useCivitaiSession(sessionId);
-const device = computed(() => (session.data.value?.flow === 'device' && !sessionEnded(session.data.value) ? session.data.value : null));
+const waiting = computed(() => (session.data.value && !sessionEnded(session.data.value) ? session.data.value : null));
+const device = computed(() => (waiting.value?.flow === 'device' ? waiting.value : null));
+const browser = computed(() => (waiting.value?.flow === 'browser' ? waiting.value : null));
 const verificationUrl = computed(() => device.value?.verification_uri_complete ?? device.value?.verification_uri ?? '');
 
 const now = ref(Date.now());
 let ticker: ReturnType<typeof setInterval> | undefined;
-watch(device, (waiting) => {
+watch(waiting, (current) => {
   clearInterval(ticker);
-  ticker = waiting ? setInterval(() => (now.value = Date.now()), 1000) : undefined;
+  ticker = current ? setInterval(() => (now.value = Date.now()), 1000) : undefined;
 });
 onBeforeUnmount(() => clearInterval(ticker));
 const remaining = computed(() => {
-  if (!device.value) return '';
-  const seconds = Math.max(0, Math.round((Date.parse(device.value.expires_at) - now.value) / 1000));
+  if (!waiting.value) return '';
+  const seconds = Math.max(0, Math.round((Date.parse(waiting.value.expires_at) - now.value) / 1000));
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 });
 
@@ -89,6 +93,7 @@ watch(
   (current) => {
     if (!current || !sessionEnded(current)) return;
     sessionId.value = null;
+    authorizationUrl.value = '';
     if (current.status === 'connected') {
       snackbar.show(t('auth.connected'));
       invalidateAfterSignIn(qc);
@@ -99,41 +104,56 @@ watch(
   },
 );
 
-/** Opens the page in a new tab without handing it this window; says so when the browser blocks it. */
-function openVerification(url: string) {
+/** A new tab that gets no handle on this window, or null when the browser blocks it. */
+function openTab(): Window | null {
   const tab = window.open('', '_blank');
+  if (tab) tab.opener = null;
+  return tab;
+}
+
+/** Opens the page in a new tab; says so when the browser blocks it. */
+function openVerification(url: string) {
+  const tab = openTab();
   if (!tab) {
     snackbar.error(t('auth.device.blocked'));
     return;
   }
-  tab.opener = null;
   tab.location.href = url;
 }
 
 // -- returning from Civitai --------------------------------------------------
 
 // The callback comes back to the settings page with ?civitai=connected, or =error and a reason.
+// In the tab a sign-in opened, the settings tab that started it is following the session and
+// says the same, so this one closes; a browser that refuses to close it leaves the page as it is.
 onMounted(() => {
   const result = route.query.civitai;
   if (!result) return;
   if (result === 'connected') snackbar.show(t('auth.connected'));
   else snackbar.error(t(`auth.reasons.${(route.query.civitai_reason as Reason | undefined) ?? 'failed'}`));
   invalidateAfterSignIn(qc);
-  router.replace({ query: { ...route.query, civitai: undefined, civitai_reason: undefined } });
+  const opened = route.query.civitai_tab;
+  router.replace({ query: { ...route.query, civitai: undefined, civitai_reason: undefined, civitai_tab: undefined } });
+  if (opened) window.close();
 });
 
 async function signIn(flow: SignInFlow) {
+  // Opened before anything is awaited: a browser allows a new tab only while handling the click.
+  const tab = openTab();
   try {
-    const begun = await start.mutateAsync({ returnTo: '/#/settings', flow });
-    if (begun.flow === 'browser') {
-      // Same-tab navigation keeps this browser's binding; the page never sees a credential.
+    const begun = await start.mutateAsync({ returnTo: tab ? '/#/settings?civitai_tab=1' : '/#/settings', flow });
+    if (begun.flow === 'browser' && !tab) {
+      // With the new tab blocked, Civitai's page replaces this one and comes back here.
       window.location.assign(begun.authorization_url);
       return;
     }
     sessionId.value = begun.session_id;
     status.refetch();
-    openVerification(begun.authorization_url);
+    if (begun.flow === 'browser') authorizationUrl.value = begun.authorization_url;
+    if (tab) tab.location.href = begun.authorization_url;
+    else snackbar.error(t('auth.device.blocked'));
   } catch (e) {
+    tab?.close();
     snackbar.error((e as Error).message);
   }
 }
@@ -143,6 +163,7 @@ function cancel() {
   cancelSession.mutate(sessionId.value, {
     onSuccess: () => {
       sessionId.value = null;
+      authorizationUrl.value = '';
       status.refetch();
     },
     onError: (e) => snackbar.error((e as Error).message),
@@ -197,8 +218,8 @@ function saveToken(token: string | null) {
       </div>
       <div class="oauth-actions">
         <template v-if="!connected">
-          <AppButton v-if="offersCode" variant="text" :disabled="!!device || start.isPending.value" @click="signIn('device')">{{ t('auth.signInCode') }}</AppButton>
-          <AppButton :icon="icons.ExternalLink" :loading="start.isPending.value" :disabled="!canSignIn || !!device" @click="signIn('auto')">
+          <AppButton v-if="offersCode" variant="text" :disabled="!!waiting || start.isPending.value" @click="signIn('device')">{{ t('auth.signInCode') }}</AppButton>
+          <AppButton :icon="icons.ExternalLink" :loading="start.isPending.value" :disabled="!canSignIn || !!waiting" @click="signIn('auto')">
             {{ needsReauth ? t('auth.reconnect') : t('auth.signIn') }}
           </AppButton>
         </template>
@@ -221,6 +242,19 @@ function saveToken(token: string | null) {
       </div>
     </div>
 
+    <!-- A browser sign-in going on in the tab it opened. -->
+    <div v-if="browser" class="device" role="status" aria-live="polite">
+      <span class="type-body-medium">{{ t('auth.browser.prompt') }}</span>
+      <ProgressBar :label="t('auth.browser.waiting')" />
+      <div class="device-actions">
+        <span class="type-body-small muted">{{ t('auth.device.remaining', { time: remaining }) }}</span>
+        <span class="device-buttons">
+          <AppButton variant="text" :loading="cancelSession.isPending.value" @click="cancel">{{ t('common.cancel') }}</AppButton>
+          <AppButton v-if="authorizationUrl" variant="tonal" :icon="icons.ExternalLink" @click="openVerification(authorizationUrl)">{{ t('auth.device.open') }}</AppButton>
+        </span>
+      </div>
+    </div>
+
     <!-- Which credential requests use. Only the user changes this. -->
     <div v-if="state && (connected || state.manual_token_configured)" class="method">
       <span class="type-body-large">{{ t('auth.useMethod') }}</span>
@@ -233,7 +267,7 @@ function saveToken(token: string | null) {
         @update:model-value="choose($event as AuthMethod)"
       />
     </div>
-    <p v-if="errorText && !device" class="type-body-small error">{{ errorText }}</p>
+    <p v-if="errorText && !waiting" class="type-body-small error">{{ errorText }}</p>
 
     <Divider />
 

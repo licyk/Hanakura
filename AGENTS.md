@@ -664,6 +664,14 @@ through the system file picker behind the **Upload** button, which uses one thro
 A finished download offers **Show in the library**, which opens the folder it landed in, asking
 `locate` (§10) when the job was given an absolute folder and so carries no root.
 
+**Signing in with Civitai opens a new tab** (`components/CivitaiAuthPanel.vue`), for the browser
+flow as for the device one. The tab is opened in the click handler, before the start request is
+awaited, because a browser blocks a new tab opened after an `await`; it gets no `opener`, and is
+closed again if the start fails. The settings tab follows the session (`useCivitaiSession`), as
+it does a device sign-in. The browser flow's `return_to` carries `civitai_tab=1`, so the page the
+callback lands on closes itself; a browser that refuses leaves it showing the outcome. With the
+new tab blocked, the browser flow navigates the current tab instead, as it used to.
+
 In development, Vite proxies `/api`, `/openapi.json` and `/ws`. Proxy failures that mean "the API
 server is restarting" (ECONNRESET, ECONNREFUSED, EPIPE…) are collapsed into one throttled line by
 a custom logger; everything else is still printed in full.

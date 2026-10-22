@@ -54,6 +54,7 @@ const button = (wrapper: ReturnType<typeof panel>, label: string) => wrapper.fin
 describe('signing in with Civitai', () => {
   const assign = vi.fn();
   const open = vi.fn();
+  const close = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -61,6 +62,7 @@ describe('signing in with Civitai', () => {
     mocks.session.value = undefined;
     vi.stubGlobal('location', { assign });
     vi.stubGlobal('open', open);
+    vi.stubGlobal('close', close);
   });
   afterEach(() => vi.unstubAllGlobals());
 
@@ -73,9 +75,11 @@ describe('signing in with Civitai', () => {
     wrapper.unmount();
   });
 
-  it('sends the browser to Civitai in the same tab', async () => {
+  it('opens Civitai in a new tab and follows the sign-in from here', async () => {
     mocks.status.value = { ...baseStatus, oauth_configured: true, flows: ['browser'], client_source: 'bundled', client_name: 'Civitai ComfyNodes', unavailable_reason: null };
     mocks.start.mockResolvedValue({ flow: 'browser', authorization_url: 'https://auth.civitai.com/authorize?x', session_id: 's' });
+    const tab = { opener: {}, location: { href: '' }, close: vi.fn() };
+    open.mockReturnValue(tab);
     const wrapper = panel();
     expect(wrapper.text()).toContain('auth.consentApp');
     expect(button(wrapper, 'auth.signInCode')).toBeUndefined();
@@ -83,9 +87,52 @@ describe('signing in with Civitai', () => {
     expect(wrapper.findComponent(ExpansionPanel).props('open')).toBe(false);
     expect(button(wrapper, 'auth.signIn').props('disabled')).toBe(false);
     button(wrapper, 'auth.signIn').vm.$emit('click');
+    // Opened while the click is handled, before the server answers, or a browser blocks it.
+    expect(open).toHaveBeenCalledWith('', '_blank');
+    await flushPromises();
+    expect(mocks.start).toHaveBeenCalledWith({ returnTo: '/#/settings?civitai_tab=1', flow: 'auto' });
+    expect(tab.opener).toBeNull();
+    expect(tab.location.href).toBe('https://auth.civitai.com/authorize?x');
+    expect(assign).not.toHaveBeenCalled();
+    expect(mocks.sessionId.value).toBe('s');
+    mocks.session.value = { id: 's', flow: 'browser', status: 'pending', expires_at: new Date(Date.now() + 300_000).toISOString() };
+    await flushPromises();
+    expect(wrapper.text()).toContain('auth.browser.prompt');
+    expect(button(wrapper, 'auth.signIn').props('disabled')).toBe(true);
+    open.mockClear();
+    button(wrapper, 'auth.device.open').vm.$emit('click');
+    expect(open).toHaveBeenCalledTimes(1);
+    mocks.session.value = { id: 's', flow: 'browser', status: 'connected', expires_at: new Date().toISOString() };
+    await flushPromises();
+    expect(mocks.invalidate).toHaveBeenCalled();
+    expect(mocks.sessionId.value).toBeNull();
+    expect(useSnackbar().state.queue.at(-1)?.text).toBe('auth.connected');
+    expect(wrapper.text()).not.toContain('auth.browser.prompt');
+    wrapper.unmount();
+  });
+
+  it('sends this tab to Civitai when the browser blocks a new one', async () => {
+    mocks.status.value = { ...baseStatus, oauth_configured: true, flows: ['browser'] };
+    mocks.start.mockResolvedValue({ flow: 'browser', authorization_url: 'https://auth.civitai.com/authorize?x', session_id: 's' });
+    open.mockReturnValue(null);
+    const wrapper = panel();
+    button(wrapper, 'auth.signIn').vm.$emit('click');
     await flushPromises();
     expect(mocks.start).toHaveBeenCalledWith({ returnTo: '/#/settings', flow: 'auto' });
     expect(assign).toHaveBeenCalledWith('https://auth.civitai.com/authorize?x');
+    wrapper.unmount();
+  });
+
+  it('closes the new tab when the sign-in cannot begin', async () => {
+    mocks.status.value = { ...baseStatus, oauth_configured: true, flows: ['browser'] };
+    mocks.start.mockRejectedValue(new Error('No client'));
+    const tab = { opener: {}, location: { href: '' }, close: vi.fn() };
+    open.mockReturnValue(tab);
+    const wrapper = panel();
+    button(wrapper, 'auth.signIn').vm.$emit('click');
+    await flushPromises();
+    expect(tab.close).toHaveBeenCalled();
+    expect(useSnackbar().state.queue.at(-1)?.text).toBe('No client');
     wrapper.unmount();
   });
 
@@ -97,7 +144,7 @@ describe('signing in with Civitai', () => {
     const wrapper = panel();
     button(wrapper, 'auth.signInCode').vm.$emit('click');
     await flushPromises();
-    expect(mocks.start).toHaveBeenCalledWith({ returnTo: '/#/settings', flow: 'device' });
+    expect(mocks.start).toHaveBeenCalledWith({ returnTo: '/#/settings?civitai_tab=1', flow: 'device' });
     expect(mocks.sessionId.value).toBe('dev-1');
     expect(tab.location.href).toBe('https://auth.civitai.com/login/oauth/device?code=ABCD');
     mocks.session.value = {
@@ -166,7 +213,18 @@ describe('signing in with Civitai', () => {
     mocks.query = { civitai: 'error', civitai_reason: reason };
     const wrapper = panel();
     expect(useSnackbar().state.queue.at(-1)?.text).toBe(`auth.reasons.${reason}`);
-    expect(mocks.replace).toHaveBeenCalledWith({ query: { civitai: undefined, civitai_reason: undefined } });
+    expect(mocks.replace).toHaveBeenCalledWith({ query: { civitai: undefined, civitai_reason: undefined, civitai_tab: undefined } });
+    expect(close).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it('closes the tab a sign-in opened once Civitai sends it back', () => {
+    mocks.status.value = { ...baseStatus, oauth_configured: true, flows: ['browser'] };
+    mocks.query = { civitai_tab: '1', civitai: 'connected' };
+    const wrapper = panel();
+    expect(useSnackbar().state.queue.at(-1)?.text).toBe('auth.connected');
+    expect(mocks.replace).toHaveBeenCalledWith({ query: { civitai: undefined, civitai_reason: undefined, civitai_tab: undefined } });
+    expect(close).toHaveBeenCalled();
     wrapper.unmount();
   });
 

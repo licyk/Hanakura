@@ -284,6 +284,10 @@ export default {
       cancelled: 'The sign-in was cancelled.',
       failed: 'Signing in to Civitai failed. The API token is unaffected.',
     },
+    browser: {
+      prompt: 'Finish signing in on Civitai’s page in the new tab. This page follows along.',
+      waiting: 'Waiting for Civitai',
+    },
     device: {
       prompt: 'Confirm this code on Civitai’s page:',
       waiting: 'Waiting for the code to be confirmed',

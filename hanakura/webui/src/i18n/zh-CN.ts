@@ -284,6 +284,10 @@ const zhCN: typeof en = {
       cancelled: '已取消登录。',
       failed: '登录 Civitai 失败，API 令牌不受影响。',
     },
+    browser: {
+      prompt: '请在新标签页的 Civitai 页面上完成登录，本页会自动更新。',
+      waiting: '正在等待 Civitai',
+    },
     device: {
       prompt: '请在 Civitai 页面上确认此验证码：',
       waiting: '正在等待确认验证码',
